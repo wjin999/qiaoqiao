@@ -27,6 +27,7 @@ import type {
 
 const SESSION_SIZE = 10
 const SELECTED_DECK_KEY = 'typelingo.selected-deck.v1'
+const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
 
@@ -55,10 +56,11 @@ function App() {
 
 function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const [importedDecks, setImportedDecks] = useState<Lesson[]>([])
+  const [decksLoaded, setDecksLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState(() => {
     try { return localStorage.getItem(SELECTED_DECK_KEY) || defaultLesson.id } catch { return defaultLesson.id }
   })
-  const [level, setLevel] = useState('all')
+  const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(selectedId), 'all'))
   const [importOpen, setImportOpen] = useState(false)
   const [libraryError, setLibraryError] = useState('')
   const lessons = useMemo(() => {
@@ -69,6 +71,8 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [importedDecks, defaultLesson])
   const [sessionLesson, setSessionLesson] = useState<Lesson | null>(null)
   const lesson = sessionLesson ?? lessons.find((deck) => deck.id === selectedId) ?? defaultLesson
+  const savedLevel = lesson.id === selectedId ? selectedLevel : preference(deckLevelKey(lesson.id), 'all')
+  const level = lesson.items.some((item) => item.level === savedLevel) ? savedLevel : 'all'
   const [screen, setScreen] = useState<Screen>('home')
   const [queue, setQueue] = useState<LessonItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -110,7 +114,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const skippedCount = useMemo(() => lesson.items.filter((item) => skippedIds.has(item.id)).length, [lesson, skippedIds])
   const plan = useMemo(() => studyPlan(availableItems, lesson.id, cards, dailyNewLimit, new Date(clockNow)),
     [availableItems, lesson.id, cards, dailyNewLimit, clockNow])
-  const canStart = progressReady && !saving && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
+  const canStart = progressReady && decksLoaded && !saving && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
   const currentProgress = currentItem ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
   const intervals = completedAt !== null && mode === 'memory' ? ratingIntervals(currentProgress, new Date(completedAt)) : []
 
@@ -148,8 +152,10 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     let active = true
     function refresh() {
       void loadImportedDecks().then((decks) => {
-        if (active) { setImportedDecks(decks); setLibraryError('') }
-      }).catch((error) => { if (active) setLibraryError(error instanceof Error ? error.message : '读取卡组失败。') })
+        if (active) { setImportedDecks(decks); setLibraryError(''); setDecksLoaded(true) }
+      }).catch((error) => {
+        if (active) { setLibraryError(error instanceof Error ? error.message : '读取卡组失败。'); setDecksLoaded(true) }
+      })
     }
     function handleStorage(event: StorageEvent) {
       if (event.storageArea === window.localStorage && (event.key === DECKS_UPDATED_KEY || event.key === null)) refresh()
@@ -161,8 +167,13 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
 
   function selectDeck(id: string) {
     setSelectedId(id)
-    setLevel('all')
+    setSelectedLevel(preference(deckLevelKey(id), 'all'))
     try { localStorage.setItem(SELECTED_DECK_KEY, id) } catch { /* Selection still works in memory. */ }
+  }
+
+  function selectLevel(value: string) {
+    setSelectedLevel(value)
+    try { localStorage.setItem(deckLevelKey(lesson.id), value) } catch { /* Selection still works in memory. */ }
   }
 
   async function importDeck(deck: Lesson) {
@@ -179,7 +190,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [currentIndex, screen])
 
   async function startPractice() {
-    if (!progressReady || savingRef.current) return
+    if (!progressReady || !decksLoaded || savingRef.current) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const [latestCards, latestSkipped] = await Promise.all([loadCards(), loadPermanentlySkippedSentenceIds()])
@@ -315,12 +326,24 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     return () => window.removeEventListener('keydown', onRatingKey)
   })
 
+  function toggleFurigana() {
+    if (!showFurigana && !isSentenceComplete) hintUsedRef.current = true
+    setShowFurigana((current) => !current)
+    inputRef.current?.focus()
+  }
+
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     const isImeAction =
       event.nativeEvent.isComposing ||
       isComposingRef.current ||
       event.key === 'Process' ||
       event.keyCode === 229
+
+    if (event.key === 'Tab' && !isImeAction && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault()
+      if (!event.repeat) toggleFurigana()
+      return
+    }
 
     if (event.key === 'Enter' && !isImeAction) {
       event.preventDefault()
@@ -349,7 +372,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             historyPage={historyPage}
             onHistoryPage={setHistoryPage}
             canStart={canStart}
-            loading={!progressReady || saving}
+            loading={!progressReady || !decksLoaded || saving}
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
@@ -367,7 +390,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 {progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
             </div>}
-            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={setLevel} />}
+            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving} />}
           />
         )}
 
@@ -399,16 +422,17 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                     className="furigana-toggle"
                     type="button"
                     aria-pressed={showFurigana}
-                    onClick={() => { if (!showFurigana && !isSentenceComplete) hintUsedRef.current = true; setShowFurigana((current) => !current); inputRef.current?.focus() }}
+                    aria-keyshortcuts="Tab"
+                    onClick={toggleFurigana}
                   >
-                    汉字注音：{showFurigana ? '开' : '关'}
+                    汉字注音：{showFurigana ? '开' : '关'} · Tab
                   </button>
                 </div>
                 <p className="sentence" lang="ja" aria-label={currentItem.text}>
                   <JapaneseSentence
                     item={currentItem}
                     typed={typed}
-                    showFurigana={showFurigana || (mode === 'memory' && isSentenceComplete)}
+                    showFurigana={showFurigana}
                   />
                 </p>
               </div>
@@ -438,7 +462,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
 
                 <div className="typing-footer" id="typing-help">
                   <span>
-                    请使用日语输入法；汉字、假名和标点必须一致，Backspace 可修正。
+                    请使用日语输入法；Backspace 修正，Tab 切换注音，Shift+Tab 移动焦点。
                   </span>
                   {isSentenceComplete && <strong className="ready-message is-visible">
                     {mode === 'memory' ? '输入已锁定，按 1–4 评价记忆' : '输入完成，按 Enter 继续'}

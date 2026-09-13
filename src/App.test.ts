@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
+import { saveImportedDeck } from './lib/deck-storage'
 
 vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
   schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
@@ -56,6 +57,55 @@ function key(key: string, options: KeyboardEventInit = {}) {
 }
 
 describe('keyboard memory reviews', () => {
+  it('restores the selected imported deck and each deck’s own level after reopening', async () => {
+    await saveImportedDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+      items: [{ id: 'imported:1', text: '猫', nativeText: '猫', level: 'N3', ruby: [{ text: '猫' }] }] })
+    await mount()
+    function select(id: string, value: string) {
+      act(() => {
+        const element = container.querySelector<HTMLSelectElement>(`#${id}`)!
+        element.value = value; element.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+    }
+    select('level-select', 'N5')
+    select('deck-select', 'imported')
+    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('all')
+    select('level-select', 'N3')
+    select('deck-select', 'test-deck')
+    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N5')
+    select('deck-select', 'imported')
+    act(() => root.unmount())
+    root = createRoot(container)
+    await mount()
+    expect(container.querySelector<HTMLSelectElement>('#deck-select')?.value).toBe('imported')
+    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N3')
+    await start()
+    expect(container.querySelector('.sentence')?.getAttribute('aria-label')).toBe('猫')
+  })
+
+  it('toggles furigana with Tab before and after completion without stealing IME or Shift+Tab', async () => {
+    await mount(); await start()
+    key('Tab', { isComposing: true, keyCode: 229 })
+    key('Tab', { shiftKey: true })
+    expect(container.querySelector('rt')).toBeNull()
+    key('Tab')
+    expect(container.querySelector('rt')).not.toBeNull()
+    expect(document.activeElement).toBe(input())
+    key('Tab', { repeat: true })
+    expect(container.querySelector('rt')).not.toBeNull()
+    key('Tab')
+    expect(container.querySelector('rt')).toBeNull()
+    type('猫1234。')
+    expect(input().readOnly).toBe(true)
+    key('Tab')
+    expect(container.querySelector('rt')).toBeNull()
+    key('Tab')
+    expect(container.querySelector('rt')).not.toBeNull()
+    key('3')
+    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 10')
+    expect((await exportProgress()).reviews[0]?.hintUsed).toBe(true)
+  })
+
   it.each([1, 2, 3, 4])('locks the completed input and records grade %s exactly once', async (grade) => {
     await mount(); await start()
     expect(container.querySelector('rt')).toBeNull()
