@@ -1,5 +1,6 @@
 import { createEmptyCard, fsrs, type Card, type Grade } from 'ts-fsrs'
 import type { LessonItem } from '../types'
+import type { PetId } from './companions'
 
 export type PracticeMode = 'memory' | 'free'
 export type SavedCard = Omit<Card, 'due' | 'last_review'> & { due: string; last_review?: string }
@@ -21,6 +22,7 @@ export interface ReviewEntry {
   rating: Grade | null
   hintUsed: boolean
   elapsedMs: number
+  petId?: PetId
 }
 
 // Fix parameters for reproducible previews, backups and reviews across devices.
