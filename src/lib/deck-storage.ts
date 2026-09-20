@@ -1,4 +1,6 @@
 import type { Lesson } from '../types'
+import { getAccountScope } from './account-scope'
+import { loadStoredDecks, storeDeck } from './storage'
 
 const DATABASE = 'typelingo.decks.v1'
 const STORE = 'decks'
@@ -13,7 +15,8 @@ async function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-export async function loadImportedDecks(): Promise<Lesson[]> {
+export async function loadImportedDecks(account = getAccountScope()): Promise<Lesson[]> {
+  if (account) return loadStoredDecks(account)
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE, 'readonly')
@@ -24,6 +27,7 @@ export async function loadImportedDecks(): Promise<Lesson[]> {
 }
 
 export async function saveImportedDeck(lesson: Lesson): Promise<void> {
+  if (getAccountScope()) { await storeDeck(lesson); return }
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE, 'readwrite')

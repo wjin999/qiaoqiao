@@ -9,7 +9,7 @@ const validDate = (value: unknown): value is string => typeof value === 'string'
 const nonnegative = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0
 const counter = (value: unknown) => nonnegative(value) && Number.isSafeInteger(value)
 
-function validCard(value: unknown): value is SentenceProgress {
+export function validCard(value: unknown): value is SentenceProgress {
   if (!value || typeof value !== 'object') return false
   const entry = value as SentenceProgress
   const card = entry.card
@@ -27,7 +27,7 @@ function validCard(value: unknown): value is SentenceProgress {
     && [1, 2, 3].includes(card.state)
 }
 
-function validReview(value: unknown): value is ReviewEntry {
+export function validReview(value: unknown): value is ReviewEntry {
   if (!value || typeof value !== 'object') return false
   const entry = value as ReviewEntry
   return validId(entry.id) && validId(entry.lessonId) && validId(entry.sentenceId)
@@ -57,7 +57,7 @@ export function parseProgress(source: string): ProgressData {
   let value
   try { value = JSON.parse(source) } catch { throw new Error('文件不是有效的 JSON 进度备份。') }
   if (!value || value.format !== 'typelingo-progress' || ![1, 2].includes(value.version)) {
-    throw new Error('请选择 TypeLingo 导出的进度备份（版本 1 或 2）。')
+    throw new Error('请选择日语敲敲（原 TypeLingo）导出的进度备份（版本 1 或 2）。')
   }
   if (!Array.isArray(value.history) || !value.history.every(validHistoryEntry)
     || !Array.isArray(value.permanentlySkippedSentenceIds) || !value.permanentlySkippedSentenceIds.every(validId)) {
@@ -66,7 +66,7 @@ export function parseProgress(source: string): ProgressData {
   const cards = value.version === 1 ? [] : value.cards
   const reviews = value.version === 1 ? [] : value.reviews
   if (value.version === 2 && value.scheduler !== 'ts-fsrs-5.4.2-default-r90') {
-    throw new Error('此备份使用了不兼容的复习算法版本，请使用对应版本的 TypeLingo 恢复。')
+    throw new Error('此备份使用了不兼容的复习算法版本，请使用对应版本的日语敲敲恢复。')
   }
   if (!Array.isArray(cards) || !cards.every(validCard) || !Array.isArray(reviews) || !reviews.every(validReview)) {
     throw new Error('进度文件包含无效的复习计划或逐句记录。')

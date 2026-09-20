@@ -178,7 +178,7 @@ export function convertAnki(pkg: AnkiPackage, mappings: FieldMappings): Lesson {
           '无附加限制：不得施加额外法律条款或技术措施，限制他人行使许可允许的权利。',
         ],
       } : {}),
-      modifications: '已转换为 TypeLingo 跟打格式；保留原句、中文翻译与可对齐的注音；排除关联词、反义词、缺少翻译的条目，并按日中句对去重。音频、图片、卡片模板和 Anki 复习进度未导入。',
+      modifications: '已转换为日语敲敲跟打格式；保留原句、中文翻译与可对齐的注音；排除关联词、反义词、缺少翻译的条目，并按日中句对去重。音频、图片、卡片模板和 Anki 复习进度未导入。',
       sourceFile: pkg.info.fileName, noteCount: pkg.info.noteCount, cardCount: pkg.info.cardCount,
       relatedCount, duplicateCount, missingCount, unalignedReadingCount,
     },

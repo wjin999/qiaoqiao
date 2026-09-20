@@ -3,6 +3,9 @@ import { loadDefaultDeck } from './lib/default-deck'
 import { DeckPicker } from './components/DeckPicker'
 import { AnkiImport } from './components/AnkiImport'
 import { ProgressBackup } from './components/ProgressBackup'
+import { AccountButton, useAccount } from './components/Account'
+import { preference, savePreference } from './lib/preferences'
+import { CLOUD_APPLIED } from './lib/account-scope'
 import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
@@ -31,10 +34,6 @@ const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
 
-function preference(key: string, fallback: string): string {
-  try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
-}
-
 function App() {
   const [defaultLesson, setDefaultLesson] = useState<Lesson | null>(null)
   const [error, setError] = useState('')
@@ -47,7 +46,7 @@ function App() {
     return () => { active = false }
   }, [attempt])
   if (!defaultLesson) return <div className="app-shell"><main className="main-content loading-screen">
-    <span className="eyebrow">TypeLingo</span><h1>打字，记住日语。</h1>
+    <span className="eyebrow">日语敲敲</span><h1>打字，记住日语。</h1>
     <p role={error ? 'alert' : 'status'}>{error || '正在加载 egg rolls 例句库…'}</p>
     {error && <button className="primary-button" type="button" onClick={() => setAttempt((current) => current + 1)}>重试</button>}
   </main></div>
@@ -55,10 +54,11 @@ function App() {
 }
 
 function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
+  const { session, syncing, setPracticing } = useAccount()
   const [importedDecks, setImportedDecks] = useState<Lesson[]>([])
   const [decksLoaded, setDecksLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState(() => {
-    try { return localStorage.getItem(SELECTED_DECK_KEY) || defaultLesson.id } catch { return defaultLesson.id }
+    return preference(SELECTED_DECK_KEY, defaultLesson.id)
   })
   const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(selectedId), 'all'))
   const [importOpen, setImportOpen] = useState(false)
@@ -114,7 +114,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const skippedCount = useMemo(() => lesson.items.filter((item) => skippedIds.has(item.id)).length, [lesson, skippedIds])
   const plan = useMemo(() => studyPlan(availableItems, lesson.id, cards, dailyNewLimit, new Date(clockNow)),
     [availableItems, lesson.id, cards, dailyNewLimit, clockNow])
-  const canStart = progressReady && decksLoaded && !saving && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
+  const canStart = progressReady && decksLoaded && !saving && !syncing && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
   const currentProgress = currentItem ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
   const intervals = completedAt !== null && mode === 'memory' ? ratingIntervals(currentProgress, new Date(completedAt)) : []
 
@@ -144,9 +144,23 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     return () => { window.removeEventListener('storage', changed); window.removeEventListener('focus', focus); window.clearInterval(timer) }
   }, [refreshProgress])
 
+  useEffect(() => { setPracticing(screen === 'practice' || saving || importOpen) }, [screen, saving, importOpen, setPracticing])
+  function persistPreference(key: string, value: string) {
+    void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
+  }
   useEffect(() => {
-    try { localStorage.setItem('typelingo.mode', mode); localStorage.setItem('typelingo.daily-new', String(dailyNewLimit)) } catch { /* Preferences work for this visit. */ }
-  }, [mode, dailyNewLimit])
+    function applied() {
+      void refreshProgress()
+      void loadImportedDecks().then(setImportedDecks).catch(() => setLibraryError('读取同步卡组失败，请刷新重试。'))
+      const id = preference(SELECTED_DECK_KEY, defaultLesson.id)
+      setSelectedId(id); setSelectedLevel(preference(deckLevelKey(id), 'all'))
+      setMode(preference('typelingo.mode', 'memory') === 'free' ? 'free' : 'memory')
+      const limit = Number(preference('typelingo.daily-new', '10'))
+      setDailyNewLimit(Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 10)
+    }
+    window.addEventListener(CLOUD_APPLIED, applied)
+    return () => window.removeEventListener(CLOUD_APPLIED, applied)
+  }, [refreshProgress, defaultLesson.id])
 
   useEffect(() => {
     let active = true
@@ -168,12 +182,12 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   function selectDeck(id: string) {
     setSelectedId(id)
     setSelectedLevel(preference(deckLevelKey(id), 'all'))
-    try { localStorage.setItem(SELECTED_DECK_KEY, id) } catch { /* Selection still works in memory. */ }
+    persistPreference(SELECTED_DECK_KEY, id)
   }
 
   function selectLevel(value: string) {
     setSelectedLevel(value)
-    try { localStorage.setItem(deckLevelKey(lesson.id), value) } catch { /* Selection still works in memory. */ }
+    persistPreference(deckLevelKey(lesson.id), value)
   }
 
   async function importDeck(deck: Lesson) {
@@ -190,7 +204,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [currentIndex, screen])
 
   async function startPractice() {
-    if (!progressReady || !decksLoaded || savingRef.current) return
+    if (!progressReady || !decksLoaded || savingRef.current || syncing) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const [latestCards, latestSkipped] = await Promise.all([loadCards(), loadPermanentlySkippedSentenceIds()])
@@ -356,10 +370,11 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       <header className="site-header">
         <button className="brand" type="button" disabled={saving} onClick={() => { setSessionLesson(null); setScreen('home'); void refreshProgress() }}>
           <span className="brand-mark" aria-hidden="true">
-            T
+            敲
           </span>
-          <span>TypeLingo</span>
+          <span>日语敲敲</span>
         </button>
+        <AccountButton disabled={screen === 'practice' || saving || importOpen} />
       </header>
 
       <main className="main-content">
@@ -372,25 +387,25 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             historyPage={historyPage}
             onHistoryPage={setHistoryPage}
             canStart={canStart}
-            loading={!progressReady || !decksLoaded || saving}
+            loading={!progressReady || !decksLoaded || saving || syncing}
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
             progressBackup={<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} />}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
-                <button type="button" disabled={saving} aria-pressed={mode === 'memory'} onClick={() => setMode('memory')}>记忆复习</button>
-                <button type="button" disabled={saving} aria-pressed={mode === 'free'} onClick={() => setMode('free')}>自由跟打</button>
+                <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
+                <button type="button" disabled={saving || syncing} aria-pressed={mode === 'free'} onClick={() => { setMode('free'); persistPreference('typelingo.mode', 'free') }}>自由跟打</button>
               </div>
               {mode === 'memory' ? <>
                 <p>先回忆读音，再跟打核对。完成后按 1–4 评分，安排下次复习。</p>
                 <label className="daily-new-label">每天新句上限（当前卡组）<input aria-label="每天新句上限" type="number" min="0" max="100" value={dailyNewLimit}
-                  onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 100) setDailyNewLimit(value) }} /></label>
+                  disabled={syncing} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 100) { setDailyNewLimit(value); persistPreference('typelingo.daily-new', String(value)) } }} /></label>
                 <p aria-live="polite">到期 {plan.dueCount} 句 · 本轮新句 {plan.newCount} 句 · 今日已学新句 {plan.introducedToday} 句</p>
                 {progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
             </div>}
-            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving} />}
+            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
           />
         )}
 
@@ -514,7 +529,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       {importOpen && <AnkiImport onClose={() => setImportOpen(false)} onSave={importDeck} />}
 
       <footer className="site-footer">
-        卡组与学习记录长期保存在当前浏览器中，请定期备份 · TypeLingo v0.4
+        {session ? '账号记录先保存在本机，联网后同步；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
       </footer>
     </div>
   )

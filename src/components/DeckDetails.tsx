@@ -43,7 +43,7 @@ export function DeckDetails({ lesson, onClose }: { lesson: Lesson; onClose: () =
       </section>
       {metadata?.modifications && <section className="conversion-note">
         <h3>本练习库的整理说明</h3>
-        <p>{metadata.modifications}</p>
+        <p>{metadata.modifications.replaceAll('TypeLingo', '日语敲敲')}</p>
         <p>排除关联词 / 反义词 {metadata.relatedCount.toLocaleString('zh-CN')} 条；去重 {metadata.duplicateCount} 条；缺少有效句对 {metadata.missingCount} 条。</p>
         {metadata.unalignedReadingCount > 0 && <p>{metadata.unalignedReadingCount} 条注音与原句无法完全对齐，保留原句并显示为无注音。</p>}
       </section>}

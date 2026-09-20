@@ -17,6 +17,22 @@
   --red-light: #f7dfdb;
 }
 
+.account-entry { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.account-button { padding: 9px 15px; min-height: 40px; white-space: nowrap; }
+.sync-status { max-width: 280px; font-size: 12px; color: var(--muted); text-align: right; }
+.account-panel { display: grid; gap: 16px; }
+.account-panel form { display: grid; gap: 16px; }
+.account-panel label { display: grid; gap: 8px; font-weight: 600; }
+.account-panel input { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); }
+.account-panel p { margin: 0; line-height: 1.7; }
+.account-email { font-weight: 700; overflow-wrap: anywhere; }
+.account-confirm { padding: 16px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 12px; }
+.danger-button { color: var(--red); justify-self: start; }
+@media (max-width: 600px) {
+  .account-entry { flex-direction: column-reverse; align-items: flex-end; gap: 6px; max-width: 55%; }
+  .sync-status { max-width: 180px; font-size: 11px; }
+}
+
 * {
   box-sizing: border-box;
 }

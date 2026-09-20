@@ -1,0 +1,42 @@
+# 日语敲敲：云同步配置
+
+## 1. Supabase
+
+项目地址：`https://impjceezjrvmgqpwuttu.supabase.co`。
+
+1. 在 SQL Editor 中运行 `supabase/migrations/202609200001_accounts_sync.sql`。脚本在事务内创建专用表和 RPC，不修改现有业务表。
+2. Authentication → Providers 中启用 Email，并保留确认邮箱；密码最少 8 位。
+3. Authentication → URL Configuration：Site URL 设置为 `https://wjin999.github.io/Typelingo/`；Redirect URLs 加入同一地址，开发时另加 `http://localhost:5173/` 和 `http://127.0.0.1:5173/`。更换域名前先添加新地址，完成旧站记录同步或备份后再跳转。
+4. API Keys 中复制 Publishable key（或旧版 anon PUBLIC key）。**不使用 Secret key、service_role、数据库密码。**
+5. 把 `.env.example` 复制为 `.env.local`，填写公开 key。重启开发服务器。
+6. GitHub 仓库 Settings → Secrets and variables → Actions → Variables 中添加 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`。这些是公开浏览器配置，不是管理员凭据。重新运行部署 workflow 后生效。
+
+## 2. 邮箱与公开注册
+
+Supabase 默认发信仅适合项目团队测试，不能据此认为普通用户能注册。公开注册前配置 Custom SMTP，使用已验证的发信域名；验证 QQ、163、Gmail 等真实邮箱能收到验证和重设密码邮件。免费发信额度、项目休眠与容量上限以提供商控制台为准。
+
+密码和会话由 Supabase Auth 管理，本项目数据库不保存明文密码。网页使用 HTTPS。默认 API key 是公开的，权限由服务器验证的用户身份决定。
+
+## 3. 同步行为与容量
+
+- 游客保留原来的 IndexedDB 和 localStorage 标识，改名不迁移或清除旧记录。登录后使用独立账号数据库，用户可以主动合并游客记录；原游客数据不删除。
+- 本地写入和待同步队列使用同一 IndexedDB 事务。变化批量上传，下载使用服务器版本游标，重复请求通过 mutation ID 去重。卡组只在更新时上传；同步是单向请求拉取，不建立长期实时连接。
+- 正在跟打或导入时不合并远端数据，结束后自动同步。主页每分钟、重新联网、重新获得焦点时也尝试同步。离线或失败时保留本地队列，支持手动重试。
+- 评分日志不可覆盖；所有设备使用固定版本的 FSRS 重放同一句的评分，时间相同按事件 ID 排序。缺少完整日志的旧备份保留复习状态检查点。设置和跳过状态以服务器最后接受的修改为准；取消跳过也保存，避免旧设备恢复已取消状态。
+- 每账号同步文本上限 50 MiB，单个转换后的卡组上限 10 MiB（原 APKG 本地导入上限保持 512 MiB）。达到云端限制会报错并保留本地数据，不自动收费、不自动删除历史。备份仍为原进度 JSON，自定义卡组请保留原始 APKG。
+- 目前每日新句上限按各设备本地日期计算；离线多端练习可能超过设定数量，同步会保留实际发生的学习记录。
+- Supabase 控制台是当前容量监控入口。免费额度达到 80% 时暂停扩大用户规模，评估备份和扩容；不要把免费额度描述为无限保存。
+
+## 4. 数据与权限
+
+专用表启用 RLS，并撤销匿名、普通登录角色直接访问表的权限。公开 RPC 只授权 authenticated，所有读写从 `auth.uid()` 获取归属，不接受客户端提供的 user_id。函数固定空 search_path。删除账号前界面要求重新输入密码；服务器删除当前账号及级联同步数据。
+
+云端记录包括邮箱（Auth）、评分、历史、复习状态、跳过记录、学习设置和已转换的私有文本卡组。不上传原 APKG、媒体文件或原始按键序列。退出后本地账号缓存保留并隔离；在公共设备上请清除网站数据。
+
+生产前：备份 Supabase 的 Auth 和 public 数据，并实际恢复到隔离测试项目验证。凭据与备份不提交到 Git，也不上传公开 CI artifacts。用户可以随时导出原 JSON 进度备份。
+
+## 5. 上线验收
+
+用两个测试账号、两个浏览器测试：注册、验证、登录、重设密码；双设备离线练习后合并；同一记录重复提交；卡组导入与跨设备选择；设置及取消跳过；游客合并；退出切换账号；删除账号。账号 A 不能读写 B 的行，匿名调用 RPC 被拒绝。确认这些实测通过后再开放公众注册。
+
+`npm test` 包含 IndexedDB 原子写入与迁移、同步重放与重试测试，以及 PGlite 执行真实迁移 SQL 的数据库权限和幂等性测试。PGlite 验证不能代替实际 Supabase Auth 和邮箱测试。
