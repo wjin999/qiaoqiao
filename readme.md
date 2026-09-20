@@ -1,8 +1,8 @@
-# 日语敲敲
+# 日语敲敲 · qiaoqiao
 
 敲敲键盘，记住日语。通过日语例句练习汉字读音、助词与句型。
 
-**[在线使用](https://wjin999.github.io/Typelingo/)**
+**[在线使用](https://wjin999.github.io/qiaoqiao/)**
 
 ## 使用
 
