@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { Session } from '@supabase/supabase-js'
 import { AccountButton, AccountProvider, useAccount } from './Account'
-import { getAccountScope, setAccountScope } from '../lib/account-scope'
+import { getAccountScope, setAccountScope, LOCAL_CHANGED } from '../lib/account-scope'
 
 const mock = vi.hoisted(() => ({
   listener: undefined as undefined | ((event: string, session: Session | null) => void),
   login: vi.fn(), signup: vi.fn(), reset: vi.fn(), update: vi.fn(), signout: vi.fn(),
+  sync: vi.fn(),
 }))
 vi.mock('../lib/supabase', () => ({
   supabase: { auth: {
@@ -18,7 +19,7 @@ vi.mock('../lib/supabase', () => ({
   } },
   authRedirect: () => 'https://example.com/', accountError: () => '操作失败，请重试。',
 }))
-vi.mock('../lib/cloud-sync', () => ({ syncAccount: async () => {}, cloudTransport: () => ({}) }))
+vi.mock('../lib/cloud-sync', () => ({ syncAccount: mock.sync, cloudTransport: () => ({}) }))
 let container: HTMLDivElement, root: Root
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -29,7 +30,7 @@ beforeEach(() => {
   mock.reset.mockResolvedValue({ error: null }); mock.update.mockResolvedValue({ error: null })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
-afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); vi.unstubAllGlobals(); setAccountScope(null) })
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); setAccountScope(null) })
 function button(text: string) { return [...container.querySelectorAll('button')].find((item) => item.textContent === text)! }
 function fill(label: string, value: string) {
   const input = [...container.querySelectorAll('label')].find((node) => node.textContent?.startsWith(label))!.querySelector('input')!
@@ -49,6 +50,19 @@ async function mount() {
   act(() => button('登录 / 注册').click())
 }
 describe('account flows', () => {
+  it('syncs only when requested, never after login, local updates, focus, reconnect or a timer', async () => {
+    await mount()
+    await act(async () => { mock.listener?.('SIGNED_IN', { user: { id: 'manual-account', email: 'learner@example.com' }, access_token: 'test-token' } as Session) })
+    await until(() => !!button('同步'))
+    vi.useFakeTimers()
+    act(() => { window.dispatchEvent(new Event(LOCAL_CHANGED)); window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); vi.advanceTimersByTime(120000) })
+    expect(mock.sync).not.toHaveBeenCalled()
+    vi.useRealTimers()
+    act(() => button('同步').click())
+    await until(() => container.textContent?.includes('已同步') ?? false)
+    expect(mock.sync).toHaveBeenCalledTimes(1)
+    expect(mock.sync).toHaveBeenCalledWith('manual-account', expect.anything())
+  })
   it('submits email/password login and separates the active account after auth changes', async () => {
     await mount(); fill('邮箱', 'learner@example.com'); fill('密码', 'test-password'); await submit()
     expect(mock.login).toHaveBeenCalledWith({ email: 'learner@example.com', password: 'test-password' })
@@ -75,5 +89,29 @@ describe('account flows', () => {
     fill('新密码', 'a-new-password'); await submit()
     expect(mock.update).toHaveBeenCalledWith({ password: 'a-new-password' })
     expect(container.textContent).toContain('密码已更新')
+  })
+  it('allows six-character passwords without complexity requirements at signup', async () => {
+    await mount(); act(() => button('注册新账号').click())
+    fill('邮箱', 'learner@example.com'); fill('密码', 'abcdef')
+    const input = container.querySelector<HTMLInputElement>('input[type=password]')!
+    expect(input.minLength).toBe(6); expect(input.pattern).toBe('')
+    await submit()
+    expect(mock.signup).toHaveBeenCalledWith(expect.objectContaining({ password: 'abcdef' }))
+  })
+  it('checks confirmation and current password before updating a logged-in password', async () => {
+    await mount()
+    await act(async () => { mock.listener?.('SIGNED_IN', { user: { id: 'account-a', email: 'learner@example.com' }, access_token: 'test-token' } as Session) })
+    await until(() => !!button('我的账号'))
+    act(() => button('我的账号').click()); act(() => button('修改密码').click())
+    fill('当前密码', 'old-password'); fill('新密码', 'abcdef'); fill('确认新密码', 'abcdeg'); await submit()
+    expect(mock.update).not.toHaveBeenCalled(); expect(container.textContent).toContain('不一致')
+    fill('确认新密码', 'abcdef')
+    mock.login.mockResolvedValueOnce({ error: new Error('Invalid login credentials') }); await submit()
+    expect(mock.update).not.toHaveBeenCalled()
+    await submit()
+    expect(mock.login).toHaveBeenLastCalledWith({ email: 'learner@example.com', password: 'old-password' })
+    expect(mock.update).toHaveBeenCalledWith({ password: 'abcdef', current_password: 'old-password' })
+    expect(container.textContent).toContain('下次登录请使用新密码')
+    expect(button('修改密码')).toBeTruthy()
   })
 })

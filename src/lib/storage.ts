@@ -122,6 +122,14 @@ export async function loadCards(): Promise<SentenceProgress[]> {
   })
 }
 
+export async function loadActivityRecords(): Promise<{ reviews: ReviewEntry[]; history: HistoryEntry[] }> {
+  return transaction(['reviews', 'history'], 'readonly', (tx, done) => {
+    const reviews = tx.objectStore('reviews').getAll()
+    const history = tx.objectStore('history').getAll()
+    history.onsuccess = () => done({ reviews: reviews.result, history: history.result })
+  })
+}
+
 export async function loadPermanentlySkippedSentenceIds(): Promise<string[]> {
   return transaction(['skips'], 'readonly', (tx, done) => {
     const request = tx.objectStore('skips').getAllKeys(); request.onsuccess = () => done(request.result as string[])

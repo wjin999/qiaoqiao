@@ -65,26 +65,19 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!userId || readyFor !== userId) return
-    let timer: number | undefined
-    const queue = () => {
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => { void sync() }, 1500)
-    }
-    const changed = () => { setStatus('本机有更新 · 待同步'); queue() }
+    const changed = () => setStatus('本机有更新 · 待同步')
+    const online = () => setStatus('已联网 · 点击同步获取最新记录')
     const offline = () => setStatus('离线 · 记录保存在本机')
-    queue()
-    const periodic = window.setInterval(() => { if (document.visibilityState === 'visible') void sync() }, 60000)
-    window.addEventListener(LOCAL_CHANGED, changed); window.addEventListener('online', queue)
-    window.addEventListener('focus', queue); window.addEventListener('offline', offline)
+    setStatus(navigator.onLine ? '点击同步获取最新记录' : '离线 · 记录保存在本机')
+    window.addEventListener(LOCAL_CHANGED, changed); window.addEventListener('online', online)
+    window.addEventListener('offline', offline)
     return () => {
-      window.clearTimeout(timer); window.clearInterval(periodic)
-      window.removeEventListener(LOCAL_CHANGED, changed); window.removeEventListener('online', queue)
-      window.removeEventListener('focus', queue); window.removeEventListener('offline', offline)
+      window.removeEventListener(LOCAL_CHANGED, changed); window.removeEventListener('online', online)
+      window.removeEventListener('offline', offline)
     }
-  }, [userId, readyFor, sync])
+  }, [userId, readyFor])
   const setPracticing = useCallback((busy: boolean) => {
     practicing.current = busy
-    if (!busy) window.dispatchEvent(new Event(LOCAL_CHANGED))
   }, [])
 
   if (!initialized || readyFor !== userId || setupError) return <main className="loading-screen">
@@ -99,9 +92,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 export function AccountButton({ disabled = false }: { disabled?: boolean }) {
   const { session, syncing, status, recovery, sync, clearRecovery } = useAccount()
   const [open, setOpen] = useState(false)
-  const [action, setAction] = useState<'login' | 'signup' | 'forgot' | 'reset' | 'delete'>('login')
+  const [action, setAction] = useState<'login' | 'signup' | 'forgot' | 'reset' | 'change' | 'delete'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -111,6 +106,7 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!supabase || busy) return
+    if (action === 'change' && password !== confirmation) { setError('两次输入的新密码不一致。'); return }
     setBusy(true); setError(''); setMessage('')
     try {
       if (action === 'login') {
@@ -125,6 +121,10 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
       } else if (action === 'reset') {
         const { error } = await supabase.auth.updateUser({ password }); if (error) throw error
         clearRecovery(); setMessage('密码已更新。'); setAction('login')
+      } else if (action === 'change' && session?.user.email) {
+        const { error: loginError } = await supabase.auth.signInWithPassword({ email: session.user.email, password: currentPassword }); if (loginError) throw loginError
+        const { error } = await supabase.auth.updateUser({ password, current_password: currentPassword }); if (error) throw error
+        setCurrentPassword(''); setConfirmation(''); setMessage('密码已更新，下次登录请使用新密码。'); setAction('login')
       } else if (action === 'delete' && session?.user.email) {
         const { error: loginError } = await supabase.auth.signInWithPassword({ email: session.user.email, password }); if (loginError) throw loginError
         const { error } = await supabase.rpc('qiaoqiao_delete_account'); if (error) throw error
@@ -145,27 +145,31 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
       for (const deck of decks) await storeDeck(deck, account)
       for (const [key, value] of Object.entries(guestPreferences())) await storeSetting(key, value, account)
       await hydratePreferences(account); window.dispatchEvent(new Event(CLOUD_APPLIED))
-      setMergeConfirm(false); setMessage('本机游客记录已合并，游客原记录仍保留。'); await sync()
+      setMergeConfirm(false); setMessage('本机游客记录已合并，游客原记录仍保留。点击同步即可保存到云端。')
     } catch (error) { setError(accountError(error)) }
     finally { setBusy(false) }
   }
-  function choose(next: typeof action) { setAction(next); setError(''); setMessage(''); setPassword('') }
+  function choose(next: typeof action) { setAction(next); setError(''); setMessage(''); setPassword(''); setCurrentPassword(''); setConfirmation('') }
   return <div className="account-entry">
     {session && <span className="sync-status" role="status">{status || '本机记录已打开'}</span>}
-    <button type="button" className="secondary-button account-button" disabled={disabled} onClick={() => setOpen(true)}>{session ? '我的账号' : '登录 / 注册'}</button>
-    {open && <Modal title={session ? '我的账号' : '登录日语敲敲'} onClose={() => { if (!busy && !recovery) setOpen(false) }}>
+    <div className="account-header-actions">
+      {session && <button type="button" className="secondary-button sync-button" disabled={disabled || syncing || busy} onClick={() => void sync()}>{syncing ? '同步中…' : '同步'}</button>}
+      <button type="button" className="secondary-button account-button" disabled={disabled} onClick={() => setOpen(true)}>{session ? '我的账号' : '登录 / 注册'}</button>
+    </div>
+    {open && <Modal title={session ? '我的账号' : '登录日语敲敲'} onClose={() => { if (!busy && !recovery) { setOpen(false); choose('login') } }}>
       {!supabase ? <p>账号同步正在准备中，目前可以继续使用本地练习和备份。</p> : <div className="account-panel">
-        {session && action !== 'reset' && action !== 'delete' ? <>
+        {session && action !== 'reset' && action !== 'delete' && action !== 'change' ? <>
           <p className="account-email">{session.user.email}</p><p>{status}</p>
           <div className="backup-actions">
             <button className="primary-button" type="button" disabled={busy || syncing} onClick={() => void sync()}>立即同步</button>
+            <button className="secondary-button" type="button" disabled={busy || syncing} onClick={() => choose('change')}>修改密码</button>
             <button className="secondary-button" type="button" disabled={busy || syncing} onClick={async () => {
               setBusy(true)
               try { const { error } = await supabase!.auth.signOut({ scope: 'local' }); if (error) throw error }
               catch (error) { setError(accountError(error)) } finally { setBusy(false) }
             }}>退出登录</button>
           </div>
-          <p className="backup-help">学习记录、复习安排、设置和导入卡组会同步到账号。断网时继续保存到本机；一轮结束后自动同步。</p>
+          <p className="backup-help">练习自动保存在本机；点击「同步」才会上传和获取云端记录。换设备前，在旧设备同步一次，再到新设备登录并同步。</p>
           {mergeConfirm ? <div className="account-confirm"><p>将本浏览器游客模式的学习记录、设置和自定义卡组合并到当前账号。请确认这些记录属于你。</p>
             <button type="button" disabled={busy || syncing} onClick={() => void mergeGuest()}>确认合并到此账号</button>
             <button type="button" disabled={busy} onClick={() => setMergeConfirm(false)}>取消</button></div>
@@ -174,14 +178,16 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
           <button type="button" className="text-button danger-button" disabled={busy || syncing} onClick={() => choose('delete')}>删除账号</button>
         </> : <form onSubmit={(event) => void submit(event)}>
           {action === 'delete' ? <p>删除此账号及全部云端卡组和学习记录，无法撤销。请先导出备份，再输入当前密码确认。此操作不删除游客记录。</p>
-            : action === 'reset' ? <p>设置新的登录密码。</p>
+            : action === 'reset' || action === 'change' ? <p>设置新的登录密码。</p>
             : <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>}
-          {action !== 'forgot' && <label>{action === 'reset' ? '新密码' : '密码'}<input type="password" required minLength={action === 'login' || action === 'delete' ? 1 : 8}
-            autoComplete={action === 'signup' || action === 'reset' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
-          {(action === 'signup' || action === 'reset') && <p className="backup-help">至少 8 个字符。请勿与其他网站使用同一密码。</p>}
-          <button className="primary-button" type="submit" disabled={busy || syncing}>{busy ? '正在处理…' : ({ login: '登录', signup: '注册', forgot: '发送重设邮件', reset: '保存新密码', delete: '确认删除账号' })[action]}</button>
+          {action === 'change' && <label>当前密码<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>}
+          {action !== 'forgot' && <label>{action === 'reset' || action === 'change' ? '新密码' : '密码'}<input type="password" required minLength={action === 'login' || action === 'delete' ? 1 : 6}
+            autoComplete={action === 'signup' || action === 'reset' || action === 'change' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
+          {action === 'change' && <label>确认新密码<input type="password" autoComplete="new-password" required minLength={6} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>}
+          {(action === 'signup' || action === 'reset' || action === 'change') && <p className="backup-help">至少 6 个字符，不要求大小写、数字或符号组合。</p>}
+          <button className="primary-button" type="submit" disabled={busy || syncing}>{busy ? '正在处理…' : ({ login: '登录', signup: '注册', forgot: '发送重设邮件', reset: '保存新密码', change: '保存新密码', delete: '确认删除账号' })[action]}</button>
           {!recovery && <div className="backup-actions">
-            {action !== 'login' && <button type="button" className="text-button" onClick={() => choose('login')} disabled={busy}>返回登录</button>}
+            {action !== 'login' && <button type="button" className="text-button" onClick={() => choose('login')} disabled={busy}>{session ? '返回账号' : '返回登录'}</button>}
             {action === 'login' && <><button type="button" className="text-button" onClick={() => choose('signup')}>注册新账号</button><button type="button" className="text-button" onClick={() => choose('forgot')}>忘记密码</button></>}
           </div>}
         </form>}

@@ -12,6 +12,8 @@ export const authRedirect = () => `${window.location.origin}${window.location.pa
 export function accountError(error: unknown): string {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error)
   if (/Invalid login credentials/i.test(message)) return '邮箱或密码不正确。'
+  if (/same password|different from the old|same_password/i.test(message)) return '新密码不能与当前密码相同。'
+  if (/weak_password|password.*(least|characters|weak|requirements)/i.test(message)) return '密码不符合服务器要求。本站最低为 6 个字符；若仍被拒绝，请联系站长检查密码设置。'
   if (/Email not confirmed/i.test(message)) return '请先在邮件中验证邮箱，再登录。'
   if (/rate limit|over_email_send_rate_limit|email rate/i.test(message)) return '操作过于频繁，请稍后重试。'
   if (/Email address not authorized|Error sending/i.test(message)) return '注册邮件暂时无法发送，请稍后重试或联系站长。'

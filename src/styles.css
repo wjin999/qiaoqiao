@@ -18,6 +18,8 @@
 }
 
 .account-entry { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.account-header-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.account-header-actions .sync-button { padding-inline: 14px; }
 .account-button { padding: 9px 15px; min-height: 40px; white-space: nowrap; }
 .sync-status { max-width: 280px; font-size: 12px; color: var(--muted); text-align: right; }
 .account-panel { display: grid; gap: 16px; }
@@ -733,6 +735,56 @@ input:focus-visible {
 
 .native-line { padding-block: 24px 20px; }
 .japanese-line { padding-top: 16px; }
+
+.mobile-input-help { display: none; }
+.free-next-panel { text-align: right; }
+.activity-card { margin: 24px 0; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); min-width: 0; }
+.activity-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 18px; }
+.activity-heading h3 { margin: 0; font-size: 17px; }
+.activity-heading > span, .activity-footer { color: var(--muted); font-size: 12px; }
+.activity-scroll { overflow-x: auto; padding: 3px 3px 8px; }
+.activity-chart { display: grid; grid-template-columns: 24px auto; grid-template-rows: 22px auto; width: max-content; }
+.activity-months { grid-column: 2; display: grid; grid-template-columns: repeat(var(--weeks), 12px); gap: 4px; color: var(--muted); font-size: 11px; }
+.activity-months span { white-space: nowrap; }
+.activity-weekdays { grid-row: 2; display: grid; grid-template-rows: repeat(7, 12px); gap: 4px; font-size: 10px; color: var(--muted); line-height: 12px; }
+.activity-weekdays span:nth-child(2) { grid-row: 3; }
+.activity-weekdays span:nth-child(3) { grid-row: 5; }
+.activity-weekdays span:nth-child(4) { grid-row: 7; }
+.activity-grid { display: grid; grid-auto-flow: column; grid-template-columns: repeat(var(--weeks), 12px); grid-template-rows: repeat(7, 12px); gap: 4px; }
+.activity-day, .activity-legend i { width: 12px; height: 12px; min-height: 0; padding: 0; border: 1px solid #183c2210; border-radius: 3px; background: #e9ece5; }
+.activity-day { cursor: pointer; }
+.activity-day[data-level="1"], .activity-legend [data-level="1"] { background: #b9dcb9; }
+.activity-day[data-level="2"], .activity-legend [data-level="2"] { background: #78b887; }
+.activity-day[data-level="3"], .activity-legend [data-level="3"] { background: #42875d; }
+.activity-day[data-level="4"], .activity-legend [data-level="4"] { background: #215d3c; }
+.activity-day[aria-pressed="true"], .activity-day:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.activity-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.activity-legend { display: inline-flex; align-items: center; gap: 4px; }
+.activity-card .backup-help { margin-bottom: 0; }
+
+@media (max-width: 780px) {
+  .desktop-input-help { display: none; }
+  .mobile-input-help { display: inline; }
+  .practice-screen { padding-top: 22px; }
+  .progress-track { margin-bottom: 20px; }
+  .practice-line, .native-line { padding: 16px 20px; }
+  .japanese-line { padding-top: 12px; }
+  .sentence { min-height: 48px; margin-top: 8px; font-size: 30px; line-height: 1.8; }
+  .typing-input { padding-block: 10px; font-size: 23px; }
+  .typing-footer { margin-top: 12px; gap: 8px; }
+  .typing-footer .ready-message { display: none; }
+  .review-dock-space { height: 158px; }
+  .review-dock { position: fixed; z-index: 50; display: flex; align-items: flex-end; pointer-events: none; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+  .review-dock-controls { width: 100%; max-height: 100%; overflow-y: auto; pointer-events: auto; padding: 12px; border: 1px solid #c8d6ca; border-radius: 16px; background: var(--card); box-shadow: 0 -6px 28px #20382924; }
+  .review-dock .rating-panel { margin: 0; padding: 0; border: 0; }
+  .review-dock .rating-panel > p { margin: 0 0 8px; font-size: 12px; }
+  .review-dock .rating-options { gap: 6px; }
+  .review-dock .rating-button { padding: 8px 2px; gap: 5px; min-height: 80px; }
+  .review-dock .rating-button strong { font-size: 15px; }
+  .review-dock .rating-button kbd { width: 20px; height: 18px; font-size: 10px; }
+  .review-dock .free-next-panel button { width: 100%; }
+  .activity-card { padding: 18px 14px; }
+}
 
 .deck-panel {
   min-width: 0;

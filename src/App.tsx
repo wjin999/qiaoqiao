@@ -4,6 +4,8 @@ import { DeckPicker } from './components/DeckPicker'
 import { AnkiImport } from './components/AnkiImport'
 import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
+import { ReviewDock } from './components/ReviewDock'
+import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
 import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
@@ -391,7 +393,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
-            progressBackup={<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} />}
+            progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
@@ -476,22 +478,27 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 />
 
                 <div className="typing-footer" id="typing-help">
-                  <span>
+                  <span className="desktop-input-help">
                     请使用日语输入法；Backspace 修正，Tab 切换注音，Shift+Tab 移动焦点。
                   </span>
+                  <span className="mobile-input-help">使用日语输入法，完成后{mode === 'memory' ? '点击评分' : '进入下一句'}。</span>
                   {isSentenceComplete && <strong className="ready-message is-visible">
                     {mode === 'memory' ? '输入已锁定，按 1–4 评价记忆' : '输入完成，按 Enter 继续'}
                   </strong>}
                 </div>
-                {mode === 'memory' && isSentenceComplete && <div className="rating-panel" aria-label="评价这句的记忆">
-                  <p role="status">{saving ? '正在保存…' : '按看注音前的回忆评分：想不起来选「重来」，费力但想起来选「困难」。'}</p>
+                {mode === 'memory' && isSentenceComplete && <ReviewDock><div className="rating-panel" aria-label="评价这句的记忆">
+                  <p role="status"><span className="desktop-input-help">{saving ? '正在保存…' : '按看注音前的回忆评分：想不起来选「重来」，费力但想起来选「困难」。'}</span>
+                    <span className="mobile-input-help">{saving ? '正在保存…' : '按看注音前的回忆，选择评分'}</span></p>
                   <div className="rating-options">
                     {GRADES.map((grade, index) => <button key={grade} className={`rating-button rating-${grade}`} type="button"
-                      disabled={saving} onClick={() => void submitSentence(grade)} aria-keyshortcuts={String(grade)}>
+                      disabled={saving} onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault() }} onClick={() => void submitSentence(grade)} aria-keyshortcuts={String(grade)}>
                       <strong>{GRADE_LABELS[index]}</strong><span>{intervals[index]}后</span><kbd>{grade}</kbd>
                     </button>)}
                   </div>
-                </div>}
+                </div></ReviewDock>}
+                {mode === 'free' && isSentenceComplete && <ReviewDock><div className="rating-panel free-next-panel">
+                  <button type="button" className="primary-button" disabled={saving} onClick={() => void submitSentence(null)}>{saving ? '正在保存…' : '下一句'} <kbd>Enter</kbd></button>
+                </div></ReviewDock>}
               </div>
             </div>
 
@@ -529,7 +536,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       {importOpen && <AnkiImport onClose={() => setImportOpen(false)} onSave={importDeck} />}
 
       <footer className="site-footer">
-        {session ? '账号记录先保存在本机，联网后同步；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
+        {session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
       </footer>
     </div>
   )
