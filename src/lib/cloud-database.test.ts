@@ -57,14 +57,14 @@ describe('Supabase migration under PostgreSQL', () => {
   })
   it('syncs companion preferences and preserves the companion attached to an immutable practice record', async () => {
     await login(a)
-    const settings = JSON.stringify({ petId: 'mole', enabled: true, animations: true })
+    const settings = JSON.stringify({ petId: 'golden', enabled: true, animations: true })
     await push(settings, crypto.randomUUID(), 'setting', 'qiaoqiao.companion.v1')
-    const record = { id: 'pet-review', reviewedAt: '2026-01-01T00:00:00.000Z', rating: 1, petId: 'mole' }
+    const record = { id: 'pet-review', reviewedAt: '2026-01-01T00:00:00.000Z', rating: 1, petId: 'golden' }
     await push(record, crypto.randomUUID(), 'review', record.id)
-    await push({ ...record, petId: 'sprout' }, crypto.randomUUID(), 'review', record.id)
+    await push({ ...record, petId: 'tuxedo' }, crypto.randomUUID(), 'review', record.id)
     const rows = await db.query<{ key: string; value: any }>('select * from public.qiaoqiao_pull(0)')
     expect(rows.rows.find((row) => row.key === 'qiaoqiao.companion.v1')?.value).toBe(settings)
-    expect(rows.rows.find((row) => row.key === record.id)?.value.petId).toBe('mole')
+    expect(rows.rows.find((row) => row.key === record.id)?.value.petId).toBe('golden')
     await expect(push('x', crypto.randomUUID(), 'setting', 'unrecognized-setting')).rejects.toThrow('invalid_sync_record')
   })
   it('deletes only the requesting account and its cloud data', async () => {
