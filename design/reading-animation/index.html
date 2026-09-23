@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>日语敲敲 · 翻书动画样片</title>
+  <link rel="stylesheet" href="./preview.css">
+</head>
+<body>
+  <main>
+    <header>
+      <a href="/">敲 · 日语敲敲</a><span class="draft">动画样片 01</span>
+      <h1>一起，翻过这一页。</h1>
+      <p>麦麦和点点的翻书练习。可以慢放，也可以逐帧看看爪子和书页。</p>
+    </header>
+    <div class="workspace">
+    <section class="stage" data-background="paper" aria-label="两只伙伴的动画预览">
+      <article>
+        <div class="name"><h2>麦麦</h2><span>如何赢得狗狗朋友</span></div>
+        <div class="sprite golden" role="img" aria-label="金毛麦麦坐着翻阅绿色的书"></div>
+        <p>好朋友，要认真听它汪汪。</p>
+      </article>
+      <article>
+        <div class="name"><h2>点点</h2><span>高效猫猫的七个习惯</span></div>
+        <div class="sprite tuxedo" role="img" aria-label="黑白猫点点坐着翻阅绿色的书"></div>
+        <p>先读一页，再去晒太阳。</p>
+      </article>
+    </section>
+    <section class="controls" aria-label="动画播放控制">
+      <div class="buttons">
+        <button id="play" class="primary" disabled>正在加载…</button>
+        <button id="restart" disabled>从头播放</button>
+        <button id="previous" disabled aria-label="上一帧">← 上一帧</button>
+        <button id="next" disabled aria-label="下一帧">下一帧 →</button>
+      </div>
+      <div class="timeline">
+        <label for="frame">动作进度</label><output id="frame-label" for="frame">1 / 8 · 静静读书</output>
+        <input id="frame" type="range" min="0" max="7" value="0" step="1" disabled aria-label="逐帧查看">
+      </div>
+      <div class="options">
+        <label>播放速度 <select id="speed"><option value="0.5">0.5× 慢放</option><option value="1" selected>1× 正常</option><option value="1.5">1.5×</option></select></label>
+        <label>检查背景 <select id="background"><option value="paper">暖纸色</option><option value="checker">透明棋盘</option><option value="dark">深色</option></select></label>
+        <label>显示大小 <select id="size"><option value="220">页面大小</option><option value="300" selected>放大检查</option></select></label>
+      </div>
+      <p id="status" role="status">正在加载连续画面…</p>
+      <small>空格播放 / 暂停 · ← → 逐帧查看。开启系统“减少动态效果”时默认暂停。</small>
+    </section>
+    </div>
+    <footer>这是已确认动画的独立检查页。8 张连续画面依次播放，没有添加整图摇晃。</footer>
+  </main>
+  <script type="module" src="./preview.js"></script>
+</body>
+</html>

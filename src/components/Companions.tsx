@@ -4,10 +4,13 @@ import golden from '../assets/companions/golden-retriever.png'
 import tuxedo from '../assets/companions/tuxedo-cat.png'
 import goldenReading from '../assets/companions/golden-reading.png'
 import tuxedoReading from '../assets/companions/tuxedo-reading.png'
+import goldenTurn from '../assets/companions/golden-turn.png'
+import tuxedoTurn from '../assets/companions/tuxedo-turn.png'
 import { PET_BOOKS } from '../lib/pet-books'
 
 const artwork = { golden, tuxedo }
 const readingArtwork = { golden: goldenReading, tuxedo: tuxedoReading }
+const turningArtwork = { golden: goldenTurn, tuxedo: tuxedoTurn }
 
 function useCompanionMotion(enabled: boolean) {
   const [reduced, setReduced] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
@@ -24,8 +27,15 @@ function useCompanionMotion(enabled: boolean) {
 function PetFreeTime({ petId, animate }: { petId: ActivePetId; animate: boolean }) {
   const [bookIndex, setBookIndex] = useState(0)
   const [page, setPage] = useState(0)
+  const [visible, setVisible] = useState(() => !document.hidden)
+  const [artReady, setArtReady] = useState(false)
   const book = PET_BOOKS[petId][bookIndex]!
   const nextPage = () => setPage((value) => value + 1)
+  useEffect(() => {
+    const update = () => setVisible(!document.hidden)
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
   useEffect(() => {
     if (!animate) return
     const timer = window.setInterval(() => {
@@ -37,7 +47,12 @@ function PetFreeTime({ petId, animate }: { petId: ActivePetId; animate: boolean 
   const preventBlur = (event: React.PointerEvent) => event.preventDefault()
   return <div className="pet-free-time" data-animate={animate}>
     <div className="pet-activity-picture" data-pet={petId} aria-hidden="true">
-      <span className="pet-activity-frame" style={{ '--book': bookIndex } as CSSProperties}><img src={readingArtwork[petId]} alt="" draggable="false" /></span>
+      {bookIndex === 0
+        ? <span key={`turn:${page}`} className="pet-activity-frame pet-turn-frame" data-turning={animate && artReady && page > 0}
+          style={{ '--book': bookIndex, animationPlayState: visible ? 'running' : 'paused' } as CSSProperties}>
+          <img src={turningArtwork[petId]} alt="" draggable="false" onLoad={() => setArtReady(true)} />
+        </span>
+        : <span className="pet-activity-frame" style={{ '--book': bookIndex } as CSSProperties}><img src={readingArtwork[petId]} alt="" draggable="false" /></span>}
     </div>
     <div className="pet-activity-copy">
       <span className="pet-activity-label">自习时间</span>

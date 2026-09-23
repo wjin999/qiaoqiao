@@ -812,6 +812,18 @@ input:focus-visible {
 .pet-activity-picture { position: relative; width: 100%; grid-row: span 2; }
 .pet-activity-frame { position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; }
 .pet-activity-frame img { position: absolute; width: 400%; height: 100%; max-width: none; left: calc(var(--book) * -100%); user-select: none; }
+.pet-turn-frame img { height: 200%; top: 0; left: 0; }
+/* The approved sheet is four columns by two rows. Only the drawn paw/page moves. */
+.pet-turn-frame[data-turning=true] img { animation: pet-turn-page 1.38s steps(1, end) both; animation-play-state: inherit; }
+@keyframes pet-turn-page {
+  0% { left: -100%; top: 0; }
+  13.043478% { left: -200%; top: 0; }
+  26.086957% { left: -300%; top: 0; }
+  39.130435% { left: 0; top: -100%; }
+  52.173913% { left: -100%; top: -100%; }
+  65.217391% { left: -200%; top: -100%; }
+  78.26087%, 100% { left: -300%; top: -100%; }
+}
 .pet-activity-copy { min-width: 0; }
 .pet-activity-label { display: block; color: #8b917d; font-size: 10px; letter-spacing: .08em; margin: 2px 0 6px; }
 .pet-activity-copy strong { display: block; font-size: 12px; line-height: 1.6; font-weight: 600; color: #53634c; overflow-wrap: anywhere; }
