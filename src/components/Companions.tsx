@@ -2,8 +2,89 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { growthStage, PETS, type CompanionPreferences, type ActivePetId, type PetPose } from '../lib/companions'
 import golden from '../assets/companions/golden-retriever.png'
 import tuxedo from '../assets/companions/tuxedo-cat.png'
+import goldenActivities from '../assets/companions/golden-activities.png'
+import tuxedoActivities from '../assets/companions/tuxedo-activities.png'
+import { PET_BOOKS } from '../lib/pet-books'
 
 const artwork = { golden, tuxedo }
+const activityArtwork = { golden: goldenActivities, tuxedo: tuxedoActivities }
+
+function useCompanionMotion(enabled: boolean) {
+  const [reduced, setReduced] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!media) return
+    const update = () => setReduced(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return enabled && !reduced
+}
+
+function PetFreeTime({ petId, animate }: { petId: ActivePetId; animate: boolean }) {
+  const [activity, setActivity] = useState<'reading' | 'workout'>('reading')
+  const [bookIndex, setBookIndex] = useState(0)
+  const [page, setPage] = useState(0)
+  const [reps, setReps] = useState(0)
+  const book = PET_BOOKS[petId][bookIndex]!
+  const nextPage = () => setPage((value) => value + 1)
+  useEffect(() => {
+    if (!animate) return
+    const timer = window.setInterval(() => {
+      if (document.hidden) return
+      if (activity === 'reading') setPage((value) => value + 1)
+      else setReps((value) => value + 1)
+    }, activity === 'reading' ? 6000 : 2400)
+    return () => window.clearInterval(timer)
+  }, [activity, animate])
+  useEffect(() => {
+    if (!animate) return
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setActivity((value) => value === 'reading' ? 'workout' : 'reading')
+    }, 36000)
+    return () => window.clearInterval(timer)
+  }, [animate])
+  const preventBlur = (event: React.PointerEvent) => event.preventDefault()
+  return <div className="pet-free-time" data-activity={activity} data-animate={animate}>
+    <div className="pet-activity-picture" data-pet={petId} aria-hidden="true">
+      <span className="pet-activity-frame"><img src={activityArtwork[petId]} alt="" draggable="false" /></span>
+      {activity === 'reading' && <>
+        <span className="pet-book-cover-label">{book.title}</span>
+        <span key={`${bookIndex}:${page}`} className={`pet-turning-page${page ? ' is-turning' : ''}`} />
+      </>}
+    </div>
+    <div className="pet-activity-copy">
+      <span className="pet-activity-label">{activity === 'reading' ? '自习时间' : '爪爪健身房'}</span>
+      <strong>{activity === 'reading' ? `《${book.title}》` : petId === 'golden' ? '练好臂力，下次多捡一个球' : '举起小哑铃，轻松推倒烦恼'}</strong>
+      <p>{activity === 'reading' ? book.pages[page % book.pages.length] : '呼——举起来，再慢慢放下。'}</p>
+      <small>{activity === 'reading' ? `第 ${page % book.pages.length + 1} / ${book.pages.length} 页` : `已举 ${reps} 次 · 慢慢来`}</small>
+    </div>
+    <div className="pet-activity-actions">
+      {activity === 'reading' && <>
+        <button type="button" onPointerDown={preventBlur} onClick={nextPage}>翻一页</button>
+        <button type="button" onPointerDown={preventBlur} onClick={() => { setBookIndex((value) => (value + 1) % PET_BOOKS[petId].length); setPage(0) }}>换本书</button>
+      </>}
+      <button type="button" onPointerDown={preventBlur} onClick={() => setActivity((value) => value === 'reading' ? 'workout' : 'reading')}>{activity === 'reading' ? '去锻炼' : '去读书'}</button>
+    </div>
+  </div>
+}
+
+export function PracticeCompanions({ preferences, points, typed, complete }: {
+  preferences: CompanionPreferences; points: Record<ActivePetId, number>; typed: string; complete: boolean
+}) {
+  const animate = useCompanionMotion(preferences.animations)
+  if (!preferences.enabled) return null
+  return <div className="companion-sides" aria-label="陪练伙伴">
+    {PETS.map((pet) => {
+      const active = pet.id === preferences.petId
+      return <aside key={pet.id} className={`pet-side pet-side--${pet.id}`} data-active={active} aria-label={`${pet.name}${active ? '陪你练习' : '的课余时间'}`}>
+        <div className="pet-side-heading"><strong>{pet.name}</strong><span>{active ? '陪你练习' : '也在悄悄努力'}</span></div>
+        {active ? <PracticeCompanion preferences={{ ...preferences, animations: animate }} points={points[pet.id]} typed={typed} complete={complete} />
+          : <PetFreeTime petId={pet.id} animate={animate} />}
+      </aside>
+    })}
+  </div>
+}
 
 export function CompanionSprite({ petId, pose = 'idle', stage = 1, animate = false }: { petId: ActivePetId; pose?: PetPose; stage?: number; animate?: boolean }) {
   return <span className="pet-sprite" data-motion={animate ? pose : 'still'} data-stage={stage} aria-hidden="true">

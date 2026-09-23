@@ -377,6 +377,7 @@ input:focus-visible {
 }
 
 .practice-screen {
+  position: relative;
   max-width: 900px;
   margin: 0 auto;
   padding: 72px 0 90px;
@@ -801,6 +802,71 @@ input:focus-visible {
 @media (max-width: 380px) {
   .companion-home { padding: 16px 12px; }
   .practice-companion .companion-bubble { display: none; }
+}
+
+/* Both companions stay in the page flow on small screens, away from the IME dock. */
+.companion-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: -20px 0 24px; }
+.pet-side { min-width: 0; text-align: center; }
+.pet-side-heading { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.pet-side-heading strong { color: var(--ink); font-size: 16px; }
+.pet-side-heading > span { font-size: 10px; color: var(--muted); }
+.pet-side[data-active=true] .pet-side-heading > span { color: var(--green); }
+.pet-side .practice-companion { margin: 0; justify-content: center; gap: 12px; }
+.pet-side .practice-companion .pet-sprite { --pet-size: 100px; }
+.pet-side .companion-bubble { max-width: 120px; font-size: 12px; }
+.pet-free-time { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; column-gap: 8px; }
+.pet-activity-picture { position: relative; width: 100%; grid-row: span 2; }
+.pet-activity-frame { position: relative; display: block; width: 100%; aspect-ratio: 5 / 6; overflow: hidden; transform-origin: center bottom; }
+.pet-activity-frame img { position: absolute; width: 300%; height: 100%; max-width: none; left: 0; user-select: none; }
+.pet-free-time[data-activity=workout] .pet-activity-frame img { left: -100%; }
+.pet-free-time[data-activity=workout][data-animate=true] .pet-activity-frame img { animation: pet-press-frames 2.4s step-end infinite; }
+.pet-free-time[data-activity=workout][data-animate=true] .pet-activity-frame { animation: pet-press-bob 2.4s ease-in-out infinite; }
+.pet-book-cover-label { position: absolute; left: 58%; top: 43%; width: 23%; color: #fff8d6; font-size: clamp(4px, .43vw, 8px); line-height: 1.5; transform: rotate(-14deg); }
+.pet-activity-picture[data-pet=tuxedo] .pet-book-cover-label { left: 58%; top: 48%; transform: rotate(-8deg); }
+.pet-turning-page { position: absolute; left: 54%; top: 35%; width: 27%; height: 16%; background: #fff7db; border: 1px solid #d9cbaa; border-radius: 2px 8px 3px 2px; transform-origin: left bottom; opacity: 0; pointer-events: none; }
+.pet-activity-picture[data-pet=tuxedo] .pet-turning-page { top: 40%; }
+.pet-free-time[data-animate=true] .pet-turning-page.is-turning { animation: pet-page-turn .85s ease-in-out both; }
+.pet-activity-copy { min-width: 0; }
+.pet-activity-label { display: block; color: #8b917d; font-size: 10px; letter-spacing: .08em; margin: 2px 0 6px; }
+.pet-activity-copy strong { display: block; font-size: 12px; line-height: 1.6; font-weight: 600; color: #53634c; overflow-wrap: anywhere; }
+.pet-activity-copy p { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 6px 0; }
+.pet-activity-copy small { color: #959a8e; font-size: 10px; }
+.pet-activity-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 3px 10px; margin-top: 6px; }
+.pet-activity-actions button { border: 0; padding: 7px 2px; background: transparent; color: #61755c; font: inherit; font-size: 11px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.pet-activity-actions button:hover { color: var(--green); }
+@keyframes pet-page-turn { 0% { opacity: 0; transform: perspective(220px) rotateY(0deg) rotate(-10deg); } 15% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: perspective(220px) rotateY(-170deg) rotate(-10deg); } }
+@keyframes pet-press-frames { 0%,100% { left: -100%; } 50% { left: -200%; } }
+@keyframes pet-press-bob { 0%,100% { transform: translateY(1px); } 50% { transform: translateY(-3px); } }
+@media (min-width: 1280px) {
+  .companion-sides { display: contents; }
+  .pet-side { position: absolute; top: 190px; width: clamp(140px, calc((100vw - 980px) / 2), 260px); }
+  .pet-side--golden { right: calc(100% + 24px); }
+  .pet-side--tuxedo { left: calc(100% + 24px); }
+  .pet-side .practice-companion { flex-direction: column; gap: 18px; }
+  .pet-side .practice-companion .pet-sprite { --pet-size: min(100%, 220px); }
+  .pet-side .companion-bubble { max-width: 100%; font-size: 13px; }
+  .pet-free-time { display: block; }
+  .pet-activity-picture { max-width: 220px; margin: 0 auto 14px; }
+  .pet-activity-copy { padding: 0 10px; }
+  .pet-activity-copy strong { font-size: 14px; }
+  .pet-activity-copy p { font-size: 12px; min-height: 40px; }
+  .pet-activity-actions button { padding: 8px 4px; }
+}
+@media (max-width: 600px) {
+  .companion-sides { gap: 10px; margin-top: -12px; margin-bottom: 18px; }
+  .pet-side-heading { gap: 4px; margin-bottom: 2px; }
+  .pet-side-heading strong { font-size: 13px; }
+  .pet-side-heading > span { font-size: 9px; }
+  .pet-side .practice-companion { flex-direction: column; gap: 2px; }
+  .pet-side .practice-companion .pet-sprite { --pet-size: 66px; }
+  .pet-side .practice-companion .companion-bubble { display: block; max-width: 100%; font-size: 10px; }
+  .pet-free-time { grid-template-columns: 60px minmax(0, 1fr); gap: 2px; }
+  .pet-activity-copy strong { font-size: 10px; }
+  .pet-activity-copy p, .pet-activity-label { display: none; }
+  .pet-activity-picture { grid-row: auto; }
+  .pet-activity-actions { grid-column: 1 / -1; gap: 8px; margin-top: 0; }
+  .pet-activity-actions button { min-height: 32px; font-size: 10px; }
+  .pet-book-cover-label { font-size: 3px; }
 }
 .free-next-panel { text-align: right; }
 .activity-card { margin: 24px 0; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); min-width: 0; }

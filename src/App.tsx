@@ -6,7 +6,7 @@ import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
-import { CompanionHome, PracticeCompanion, ResultCompanion } from './components/Companions'
+import { CompanionHome, PracticeCompanions, ResultCompanion } from './components/Companions'
 import { companionPreferences, petGrowth, PET_PREFERENCE_KEY, type CompanionPreferences } from './lib/companions'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
@@ -456,6 +456,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
               />
             </div>
 
+            <PracticeCompanions preferences={companion} points={growth} typed={typed} complete={isSentenceComplete} />
             <div className="typing-card">
               <div className="practice-line native-line">
                 <p className="native-sentence" lang="zh-CN">
@@ -465,7 +466,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
 
               <div className="practice-line japanese-line">
                 <div className="line-heading">
-                  <PracticeCompanion preferences={companion} points={growth[companion.petId]} typed={typed} complete={isSentenceComplete} />
                   <button
                     className="furigana-toggle"
                     type="button"
