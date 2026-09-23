@@ -49,7 +49,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const sync = useCallback(async () => {
     const current = currentSession.current
     if (!current || running.current || practicing.current || getAccountScope() !== current.user.id) return
-    if (!navigator.onLine) { setStatus('离线 · 记录保存在本机'); return }
+    if (!navigator.onLine) { setStatus('离线 · 记录已保存在本机，联网后可点击同步'); return }
     running.current = true; setSyncing(true); setStatus('正在同步…')
     try {
       await syncAccount(current.user.id, cloudTransport(current.access_token))
@@ -59,7 +59,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       const pending = await pendingChanges(current.user.id)
       setStatus(pending.length ? '有新记录待同步' : `已同步 · ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`)
     } catch (error) {
-      if (currentSession.current?.user.id === current.user.id) setStatus(`同步未完成：${accountError(error)}`)
+      if (currentSession.current?.user.id === current.user.id) setStatus(`同步未完成：${accountError(error)} 记录保留在本机，可点击同步重试。`)
     } finally { running.current = false; setSyncing(false) }
   }, [])
 
@@ -169,7 +169,7 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
               catch (error) { setError(accountError(error)) } finally { setBusy(false) }
             }}>退出登录</button>
           </div>
-          <p className="backup-help">练习自动保存在本机；点击「同步」才会上传和获取云端记录。换设备前，在旧设备同步一次，再到新设备登录并同步。</p>
+          <p className="backup-help">练习逐句保存在本机，完成一组后自动同步学习进度、宠物成长与设置；也可随时点击「同步」。换设备前确认已同步，再到新设备登录并同步。</p>
           {mergeConfirm ? <div className="account-confirm"><p>将本浏览器游客模式的学习记录、设置和自定义卡组合并到当前账号。请确认这些记录属于你。</p>
             <button type="button" disabled={busy || syncing} onClick={() => void mergeGuest()}>确认合并到此账号</button>
             <button type="button" disabled={busy} onClick={() => setMergeConfirm(false)}>取消</button></div>

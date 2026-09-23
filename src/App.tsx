@@ -59,7 +59,7 @@ function App() {
 }
 
 function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
-  const { session, syncing, setPracticing } = useAccount()
+  const { session, syncing, status, sync, setPracticing } = useAccount()
   const [importedDecks, setImportedDecks] = useState<Lesson[]>([])
   const [decksLoaded, setDecksLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState(() => {
@@ -109,6 +109,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const isComposingRef = useRef(false)
   const savingRef = useRef(false)
   const roundIdRef = useRef('')
+  const autoSyncedRoundRef = useRef('')
   const sentenceStartedRef = useRef(0)
   const hintUsedRef = useRef(false)
   const sessionCardsRef = useRef<SentenceProgress[]>([])
@@ -154,7 +155,17 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     return () => { window.removeEventListener('storage', changed); window.removeEventListener('focus', focus); window.clearInterval(timer) }
   }, [refreshProgress])
 
-  useEffect(() => { setPracticing(screen === 'practice' || saving || importOpen || companionBusy) }, [screen, saving, importOpen, companionBusy, setPracticing])
+  useEffect(() => {
+    const busy = screen === 'practice' || saving || importOpen || companionBusy
+    setPracticing(busy)
+    // The final review (including pet growth) must commit before syncing.
+    // Mark the attempt first so rerenders and failed requests never loop.
+    if (screen === 'result' && !busy && !syncing && session && roundIdRef.current
+      && autoSyncedRoundRef.current !== roundIdRef.current) {
+      autoSyncedRoundRef.current = roundIdRef.current
+      void sync()
+    }
+  }, [screen, saving, importOpen, companionBusy, syncing, session, sync, setPracticing])
   async function changeCompanion(next: CompanionPreferences) {
     if (companionBusy || syncing) return
     setCompanionBusy(true)
@@ -546,6 +557,8 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
         {screen === 'result' && summary && (
           <ResultScreen
             summary={summary}
+            syncStatus={session ? status : undefined}
+            syncing={syncing}
             companion={<ResultCompanion petId={companion.petId} points={growth[companion.petId]} gained={summary.sentenceCount} animate={companion.animations} />}
             canRestart={canStart}
             onRestart={startPractice}
@@ -724,20 +737,23 @@ function HomeScreen({
 
 interface ResultScreenProps {
   summary: PracticeSummary
+  syncStatus?: string
+  syncing: boolean
   companion: React.ReactNode
   canRestart: boolean
   onRestart: () => void
   onHome: () => void
 }
 
-function ResultScreen({ summary, companion, canRestart, onRestart, onHome }: ResultScreenProps) {
+function ResultScreen({ summary, syncStatus, syncing, companion, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
       {companion}
       <span className="eyebrow">本轮完成</span>
       <h1 id="result-title">练习完成</h1>
+      {syncStatus !== undefined && <p className="backup-help" role="status">{syncStatus || '本轮已保存，准备同步…'}</p>}
       <p className="result-subtitle">
-        {!canRestart
+        {syncing ? '正在同步本轮进度与宠物成长，完成后可继续练习。' : !canRestart
           ? '当前范围暂时没有待练句子，可回到主页查看复习安排或自由跟打。'
           : summary.sentenceCount > 0
             ? `完成 ${summary.sentenceCount} 个句子，继续保持这份节奏。`

@@ -50,7 +50,7 @@ async function mount() {
   act(() => button('登录 / 注册').click())
 }
 describe('account flows', () => {
-  it('syncs only when requested, never after login, local updates, focus, reconnect or a timer', async () => {
+  it('does not sync on login, individual local updates, focus, reconnect or a timer', async () => {
     await mount()
     await act(async () => { mock.listener?.('SIGNED_IN', { user: { id: 'manual-account', email: 'learner@example.com' }, access_token: 'test-token' } as Session) })
     await until(() => !!button('同步'))
