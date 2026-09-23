@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { growthStage, PETS, type CompanionPreferences, type ActivePetId, type PetPose } from '../lib/companions'
 import golden from '../assets/companions/golden-retriever.png'
 import tuxedo from '../assets/companions/tuxedo-cat.png'
-import goldenActivities from '../assets/companions/golden-activities.png'
-import tuxedoActivities from '../assets/companions/tuxedo-activities.png'
+import goldenReading from '../assets/companions/golden-reading.png'
+import tuxedoReading from '../assets/companions/tuxedo-reading.png'
 import { PET_BOOKS } from '../lib/pet-books'
 
 const artwork = { golden, tuxedo }
-const activityArtwork = { golden: goldenActivities, tuxedo: tuxedoActivities }
+const readingArtwork = { golden: goldenReading, tuxedo: tuxedoReading }
 
 function useCompanionMotion(enabled: boolean) {
   const [reduced, setReduced] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
@@ -22,49 +22,32 @@ function useCompanionMotion(enabled: boolean) {
 }
 
 function PetFreeTime({ petId, animate }: { petId: ActivePetId; animate: boolean }) {
-  const [activity, setActivity] = useState<'reading' | 'workout'>('reading')
   const [bookIndex, setBookIndex] = useState(0)
   const [page, setPage] = useState(0)
-  const [reps, setReps] = useState(0)
   const book = PET_BOOKS[petId][bookIndex]!
   const nextPage = () => setPage((value) => value + 1)
   useEffect(() => {
     if (!animate) return
     const timer = window.setInterval(() => {
       if (document.hidden) return
-      if (activity === 'reading') setPage((value) => value + 1)
-      else setReps((value) => value + 1)
-    }, activity === 'reading' ? 6000 : 2400)
-    return () => window.clearInterval(timer)
-  }, [activity, animate])
-  useEffect(() => {
-    if (!animate) return
-    const timer = window.setInterval(() => {
-      if (!document.hidden) setActivity((value) => value === 'reading' ? 'workout' : 'reading')
-    }, 36000)
+      setPage((value) => value + 1)
+    }, 6000)
     return () => window.clearInterval(timer)
   }, [animate])
   const preventBlur = (event: React.PointerEvent) => event.preventDefault()
-  return <div className="pet-free-time" data-activity={activity} data-animate={animate}>
+  return <div className="pet-free-time" data-animate={animate}>
     <div className="pet-activity-picture" data-pet={petId} aria-hidden="true">
-      <span className="pet-activity-frame"><img src={activityArtwork[petId]} alt="" draggable="false" /></span>
-      {activity === 'reading' && <>
-        <span className="pet-book-cover-label">{book.title}</span>
-        <span key={`${bookIndex}:${page}`} className={`pet-turning-page${page ? ' is-turning' : ''}`} />
-      </>}
+      <span className="pet-activity-frame" style={{ '--book': bookIndex } as CSSProperties}><img src={readingArtwork[petId]} alt="" draggable="false" /></span>
     </div>
     <div className="pet-activity-copy">
-      <span className="pet-activity-label">{activity === 'reading' ? '自习时间' : '爪爪健身房'}</span>
-      <strong>{activity === 'reading' ? `《${book.title}》` : petId === 'golden' ? '练好臂力，下次多捡一个球' : '举起小哑铃，轻松推倒烦恼'}</strong>
-      <p>{activity === 'reading' ? book.pages[page % book.pages.length] : '呼——举起来，再慢慢放下。'}</p>
-      <small>{activity === 'reading' ? `第 ${page % book.pages.length + 1} / ${book.pages.length} 页` : `已举 ${reps} 次 · 慢慢来`}</small>
+      <span className="pet-activity-label">自习时间</span>
+      <strong>《{book.title}》</strong>
+      <p key={`${bookIndex}:${page}`}>{book.pages[page % book.pages.length]}</p>
+      <small>第 {page % book.pages.length + 1} / {book.pages.length} 页</small>
     </div>
     <div className="pet-activity-actions">
-      {activity === 'reading' && <>
         <button type="button" onPointerDown={preventBlur} onClick={nextPage}>翻一页</button>
         <button type="button" onPointerDown={preventBlur} onClick={() => { setBookIndex((value) => (value + 1) % PET_BOOKS[petId].length); setPage(0) }}>换本书</button>
-      </>}
-      <button type="button" onPointerDown={preventBlur} onClick={() => setActivity((value) => value === 'reading' ? 'workout' : 'reading')}>{activity === 'reading' ? '去锻炼' : '去读书'}</button>
     </div>
   </div>
 }
@@ -127,7 +110,7 @@ export function CompanionHome({ preferences, points, ready, disabled, onChange }
     </div>
     <div className="companion-options">
       <label><input type="checkbox" checked={preferences.enabled} disabled={disabled} onChange={(event) => onChange({ ...preferences, enabled: event.target.checked })} />练习时显示伙伴</label>
-      <label><input type="checkbox" checked={preferences.animations} disabled={disabled} onChange={(event) => onChange({ ...preferences, animations: event.target.checked })} />伙伴小动作</label>
+      <label><input type="checkbox" checked={preferences.animations} disabled={disabled} onChange={(event) => onChange({ ...preferences, animations: event.target.checked })} />伙伴自动翻页</label>
       <span>30 成长解锁星星 · 150 成长解锁花环。四种评分奖励相同，隐藏伙伴也会成长。</span>
     </div>
   </section>
