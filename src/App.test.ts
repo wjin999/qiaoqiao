@@ -57,32 +57,6 @@ function key(key: string, options: KeyboardEventInit = {}) {
 }
 
 describe('keyboard memory reviews', () => {
-  it('remembers the chosen companion and gives growth only after a completed sentence is saved', async () => {
-    await mount()
-    act(() => button('米米雀').click())
-    await until(() => button('米米雀').getAttribute('aria-pressed') === 'true')
-    act(() => root.unmount()); root = createRoot(container); await mount()
-    expect(button('米米雀').getAttribute('aria-pressed')).toBe('true')
-    await start(); type('猫1234。')
-    expect((await exportProgress()).reviews).toHaveLength(0)
-    expect(container.textContent).not.toContain('成长 +1')
-    key('1')
-    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 10')
-    expect((await exportProgress()).reviews[0]?.petId).toBe('sparrow')
-    act(() => button('日语敲敲').click())
-    await until(() => !!container.querySelector('.companion-choices') && button('米米雀').textContent!.includes('1 成长'))
-    expect(button('敲敲鼹').textContent).toContain('0 成长')
-    act(() => {
-      const toggle = [...container.querySelectorAll('label')].find((label) => label.textContent?.includes('练习时显示伙伴'))!.querySelector('input')!
-      toggle.click()
-    })
-    await until(() => !button('米米雀').disabled)
-    await start()
-    expect(container.querySelector('.practice-companion')).toBeNull()
-    type(container.querySelector('.sentence')!.getAttribute('aria-label')!); key('4')
-    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 9')
-    expect((await exportProgress()).reviews.filter((entry) => entry.petId === 'sparrow')).toHaveLength(2)
-  })
   it('restores the selected imported deck and each deck’s own level after reopening', async () => {
     await saveImportedDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
       items: [{ id: 'imported:1', text: '猫', nativeText: '猫', level: 'N3', ruby: [{ text: '猫' }] }] })

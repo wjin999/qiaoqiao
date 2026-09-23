@@ -8,7 +8,7 @@ import { syncAccount, validCloudRow, type SyncTransport } from './cloud-sync'
 import { rebuildCards } from './reconcile'
 import { reviewSentence, type ReviewEntry } from './scheduler'
 import type { CloudRow } from './cloud-types'
-import { petGrowth, PET_PREFERENCE_KEY } from './companions'
+import { PET_PREFERENCE_KEY } from './companions'
 
 const item = { id: 'sentence', text: '猫', nativeText: '猫', ruby: [{ text: '猫' }] }
 const review: ReviewEntry = { id: 'a:1', lessonId: 'deck', sentenceId: 'sentence', reviewedAt: '2026-09-20T01:00:00.000Z', mode: 'memory', rating: 3, hintUsed: false, elapsedMs: 1000 }
@@ -17,7 +17,7 @@ beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); localStorage.cl
 afterEach(() => { setAccountScope(null); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('account synchronization', () => {
-  it('merges independent pet growth from two devices without duplicate rewards and syncs selection', async () => {
+  it('continues syncing legacy companion records without duplication or account leakage', async () => {
     const local: ReviewEntry = { ...review, petId: 'mole' }
     const remote: ReviewEntry = { ...review, id: 'device-b:1', reviewedAt: '2026-09-20T02:00:00Z', petId: 'sparrow' }
     await recordReview(local, item, history)
@@ -30,10 +30,11 @@ describe('account synchronization', () => {
     const transport: SyncTransport = { push: async () => {}, pull: async () => rows }
     await syncAccount('account-a', transport)
     await syncAccount('account-a', { push: async () => {}, pull: async () => [] })
-    expect(petGrowth((await exportProgress()).reviews)).toEqual({ mole: 1, sparrow: 1, sprout: 0 })
+    expect((await exportProgress()).reviews).toEqual(expect.arrayContaining([local, remote]))
+    expect((await exportProgress()).reviews).toHaveLength(2)
     expect((await loadSettings())[PET_PREFERENCE_KEY]).toContain('sprout')
     setAccountScope('account-b')
-    expect(petGrowth((await exportProgress()).reviews)).toEqual({ mole: 0, sparrow: 0, sprout: 0 })
+    expect((await exportProgress()).reviews).toEqual([])
   })
   it('isolates guest, account A and account B without erasing any records', async () => {
     setAccountScope(null); await recordReview(review, item, history)

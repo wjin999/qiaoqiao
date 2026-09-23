@@ -6,8 +6,6 @@ import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
-import { CompanionHome, PracticeCompanion, ResultCompanion } from './components/Companions'
-import { companionPreferences, petGrowth, PET_PREFERENCE_KEY, type CompanionPreferences } from './lib/companions'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
 import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
@@ -18,13 +16,12 @@ import {
   historyCount,
   loadCards,
   loadHistory,
-  loadActivityRecords,
   loadPermanentlySkippedSentenceIds,
   PROGRESS_UPDATED_KEY,
   recordReview,
   permanentlySkipSentence,
 } from './lib/storage'
-import { GRADES, GRADE_LABELS, ratingIntervals, studyPlan, type PracticeMode, type ReviewEntry, type SentenceProgress } from './lib/scheduler'
+import { GRADES, GRADE_LABELS, ratingIntervals, studyPlan, type PracticeMode, type SentenceProgress } from './lib/scheduler'
 import type { Grade } from 'ts-fsrs'
 import type {
   HistoryEntry,
@@ -90,10 +87,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const [historyPage, setHistoryPage] = useState(0)
   const [permanentlySkippedIds, setPermanentlySkippedIds] = useState<string[]>([])
   const [cards, setCards] = useState<SentenceProgress[]>([])
-  const [reviews, setReviews] = useState<ReviewEntry[]>([])
-  const [companion, setCompanion] = useState(() => companionPreferences(preference(PET_PREFERENCE_KEY, '')))
-  const [companionBusy, setCompanionBusy] = useState(false)
-  const growth = useMemo(() => petGrowth(reviews), [reviews])
   const [progressReady, setProgressReady] = useState(false)
   const [progressError, setProgressError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -123,19 +116,18 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const skippedCount = useMemo(() => lesson.items.filter((item) => skippedIds.has(item.id)).length, [lesson, skippedIds])
   const plan = useMemo(() => studyPlan(availableItems, lesson.id, cards, dailyNewLimit, new Date(clockNow)),
     [availableItems, lesson.id, cards, dailyNewLimit, clockNow])
-  const canStart = progressReady && decksLoaded && !saving && !syncing && !companionBusy && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
+  const canStart = progressReady && decksLoaded && !saving && !syncing && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
   const currentProgress = currentItem ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
   const intervals = completedAt !== null && mode === 'memory' ? ratingIntervals(currentProgress, new Date(completedAt)) : []
 
   const refreshProgress = useCallback(async () => {
     const version = ++refreshVersionRef.current
     try {
-      const [recent, total, skipped, progress, activity] = await Promise.all([
-        loadHistory(5, historyPage * 5), historyCount(), loadPermanentlySkippedSentenceIds(), loadCards(), loadActivityRecords(),
+      const [recent, total, skipped, progress] = await Promise.all([
+        loadHistory(5, historyPage * 5), historyCount(), loadPermanentlySkippedSentenceIds(), loadCards(),
       ])
       if (version !== refreshVersionRef.current) return
       setHistory(recent); setHistoryTotal(total); setPermanentlySkippedIds(skipped); setCards(progress)
-      setReviews(activity.reviews)
       setProgressReady(true); setProgressError(''); setClockNow(Date.now())
     } catch (error) {
       if (version === refreshVersionRef.current) setProgressError(error instanceof Error ? error.message : '读取学习记录失败。')
@@ -154,14 +146,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     return () => { window.removeEventListener('storage', changed); window.removeEventListener('focus', focus); window.clearInterval(timer) }
   }, [refreshProgress])
 
-  useEffect(() => { setPracticing(screen === 'practice' || saving || importOpen || companionBusy) }, [screen, saving, importOpen, companionBusy, setPracticing])
-  async function changeCompanion(next: CompanionPreferences) {
-    if (companionBusy || syncing) return
-    setCompanionBusy(true)
-    try { await savePreference(PET_PREFERENCE_KEY, JSON.stringify(next)); setCompanion(next) }
-    catch { setProgressError('伙伴设置未能保存，请检查浏览器存储后重试。') }
-    finally { setCompanionBusy(false) }
-  }
+  useEffect(() => { setPracticing(screen === 'practice' || saving || importOpen) }, [screen, saving, importOpen, setPracticing])
   function persistPreference(key: string, value: string) {
     void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
   }
@@ -172,7 +157,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       const id = preference(SELECTED_DECK_KEY, defaultLesson.id)
       setSelectedId(id); setSelectedLevel(preference(deckLevelKey(id), 'all'))
       setMode(preference('typelingo.mode', 'memory') === 'free' ? 'free' : 'memory')
-      setCompanion(companionPreferences(preference(PET_PREFERENCE_KEY, '')))
       const limit = Number(preference('typelingo.daily-new', '10'))
       setDailyNewLimit(Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 10)
     }
@@ -222,7 +206,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [currentIndex, screen])
 
   async function startPractice() {
-    if (!progressReady || !decksLoaded || savingRef.current || syncing || companionBusy) return
+    if (!progressReady || !decksLoaded || savingRef.current || syncing) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const [latestCards, latestSkipped] = await Promise.all([loadCards(), loadPermanentlySkippedSentenceIds()])
@@ -318,12 +302,10 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const nextCount = completedSentenceCount + 1
-      const review: ReviewEntry = { id: `${roundIdRef.current}:${currentIndex}`, lessonId: lesson.id,
+      await recordReview({ id: `${roundIdRef.current}:${currentIndex}`, lessonId: lesson.id,
         sentenceId: currentItem.id, reviewedAt: new Date(completedAt).toISOString(), mode, rating: grade,
-        hintUsed: hintUsedRef.current, elapsedMs: Math.max(0, completedAt - sentenceStartedRef.current), petId: companion.petId }
-      await recordReview(review,
+        hintUsed: hintUsedRef.current, elapsedMs: Math.max(0, completedAt - sentenceStartedRef.current) },
         currentItem, roundHistory(nextCount), currentProgress?.updatedAt)
-      setReviews((current) => current.some((entry) => entry.id === review.id) ? current : [...current, review])
       setCompletedSentenceCount(nextCount)
       advanceFromCurrent(nextCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
@@ -394,7 +376,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
           </span>
           <span>日语敲敲</span>
         </button>
-        <AccountButton disabled={screen === 'practice' || saving || importOpen || companionBusy} />
+        <AccountButton disabled={screen === 'practice' || saving || importOpen} />
       </header>
 
       <main className="main-content">
@@ -412,7 +394,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
             progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
-            companionPanel={<CompanionHome preferences={companion} points={growth} ready={progressReady} disabled={saving || syncing || companionBusy} onChange={(next) => void changeCompanion(next)} />}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
@@ -454,7 +435,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
 
               <div className="practice-line japanese-line">
                 <div className="line-heading">
-                  <PracticeCompanion preferences={companion} points={growth[companion.petId]} typed={typed} complete={isSentenceComplete} />
                   <button
                     className="furigana-toggle"
                     type="button"
@@ -546,7 +526,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
         {screen === 'result' && summary && (
           <ResultScreen
             summary={summary}
-            companion={<ResultCompanion petId={companion.petId} points={growth[companion.petId]} gained={summary.sentenceCount} animate={companion.animations} />}
             canRestart={canStart}
             onRestart={startPractice}
             onHome={() => { setSessionLesson(null); setScreen('home') }}
@@ -622,7 +601,6 @@ interface HomeScreenProps {
   deckPicker: React.ReactNode
   progressBackup: React.ReactNode
   practiceOptions: React.ReactNode
-  companionPanel: React.ReactNode
 }
 
 function HomeScreen({
@@ -638,7 +616,6 @@ function HomeScreen({
   deckPicker,
   progressBackup,
   practiceOptions,
-  companionPanel,
 }: HomeScreenProps) {
   return (
     <>
@@ -674,8 +651,6 @@ function HomeScreen({
 
         {deckPicker}
       </section>
-
-      {companionPanel}
 
       <section className="history-section" aria-labelledby="history-title">
         <div className="section-heading">
@@ -724,16 +699,17 @@ function HomeScreen({
 
 interface ResultScreenProps {
   summary: PracticeSummary
-  companion: React.ReactNode
   canRestart: boolean
   onRestart: () => void
   onHome: () => void
 }
 
-function ResultScreen({ summary, companion, canRestart, onRestart, onHome }: ResultScreenProps) {
+function ResultScreen({ summary, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
-      {companion}
+      <span className="result-check" aria-hidden="true">
+        ✓
+      </span>
       <span className="eyebrow">本轮完成</span>
       <h1 id="result-title">练习完成</h1>
       <p className="result-subtitle">
