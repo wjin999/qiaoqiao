@@ -161,7 +161,6 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
         {session && action !== 'reset' && action !== 'delete' && action !== 'change' ? <>
           <p className="account-email">{session.user.email}</p><p>{status}</p>
           <div className="backup-actions">
-            <button className="primary-button" type="button" disabled={busy || syncing} onClick={() => void sync()}>立即同步</button>
             <button className="secondary-button" type="button" disabled={busy || syncing} onClick={() => choose('change')}>修改密码</button>
             <button className="secondary-button" type="button" disabled={busy || syncing} onClick={async () => {
               setBusy(true)
@@ -169,7 +168,7 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
               catch (error) { setError(accountError(error)) } finally { setBusy(false) }
             }}>退出登录</button>
           </div>
-          <p className="backup-help">练习逐句保存在本机，完成一组后自动同步学习进度、宠物成长与设置；也可随时点击「同步」。换设备前确认已同步，再到新设备登录并同步。</p>
+          <p className="backup-help">练习逐句保存在本机，完成一组后自动同步学习进度、宠物成长与设置；手动同步请关闭此窗口，点击页面右上角的「同步」。换设备前确认已同步，再到新设备登录并同步。</p>
           {mergeConfirm ? <div className="account-confirm"><p>将本浏览器游客模式的学习记录、设置和自定义卡组合并到当前账号。请确认这些记录属于你。</p>
             <button type="button" disabled={busy || syncing} onClick={() => void mergeGuest()}>确认合并到此账号</button>
             <button type="button" disabled={busy} onClick={() => setMergeConfirm(false)}>取消</button></div>
