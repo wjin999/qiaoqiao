@@ -7,7 +7,7 @@ import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { CompanionHome, PracticeCompanions, ResultCompanion } from './components/Companions'
-import { companionPreferences, petGrowth, PET_PREFERENCE_KEY, type CompanionPreferences } from './lib/companions'
+import { companionPreferences, equippedOutfit, petGrowth, PET_PREFERENCE_KEY, type CompanionPreferences } from './lib/companions'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
 import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
@@ -167,10 +167,10 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     }
   }, [screen, saving, importOpen, companionBusy, syncing, session, sync, setPracticing])
   async function changeCompanion(next: CompanionPreferences) {
-    if (companionBusy || syncing) return
+    if (companionBusy || syncing) return false
     setCompanionBusy(true)
-    try { await savePreference(PET_PREFERENCE_KEY, JSON.stringify(next)); setCompanion(next) }
-    catch { setProgressError('伙伴设置未能保存，请检查浏览器存储后重试。') }
+    try { await savePreference(PET_PREFERENCE_KEY, JSON.stringify(next)); setCompanion(next); return true }
+    catch { setProgressError('伙伴设置未能保存，请检查浏览器存储后重试。'); return false }
     finally { setCompanionBusy(false) }
   }
   function persistPreference(key: string, value: string) {
@@ -423,7 +423,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
             progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
-            companionPanel={<CompanionHome preferences={companion} points={growth} ready={progressReady} disabled={saving || syncing || companionBusy} onChange={(next) => void changeCompanion(next)} />}
+            companionPanel={<CompanionHome preferences={companion} points={growth} ready={progressReady} disabled={saving || syncing || companionBusy} onChange={changeCompanion} />}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
@@ -559,7 +559,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             summary={summary}
             syncStatus={session ? status : undefined}
             syncing={syncing}
-            companion={<ResultCompanion petId={companion.petId} points={growth[companion.petId]} gained={summary.sentenceCount} animate={companion.animations} />}
+            companion={<ResultCompanion petId={companion.petId} points={growth[companion.petId]} gained={summary.sentenceCount} animate={companion.animations} outfit={equippedOutfit(companion, companion.petId, growth[companion.petId])} />}
             canRestart={canStart}
             onRestart={startPractice}
             onHome={() => { setSessionLesson(null); setScreen('home') }}

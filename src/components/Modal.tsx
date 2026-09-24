@@ -5,8 +5,11 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   const titleId = useId()
   useEffect(() => {
     const dialog = ref.current!
+    const previousFocus = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     dialog.showModal()
-    return () => dialog.close()
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; previousFocus?.focus() }
   }, [])
   return (
     <dialog ref={ref} className="deck-modal" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose() }}>

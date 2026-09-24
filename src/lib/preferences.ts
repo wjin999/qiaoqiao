@@ -12,9 +12,13 @@ export function preference(key: string, fallback: string): string {
 export async function savePreference(key: string, value: string) {
   if (!isPreference(key)) return
   const cache = cacheKey(key)
-  if (getAccountScope()) await storeSetting(key, value)
+  const account = getAccountScope()
+  if (account) await storeSetting(key, value)
+  try { localStorage.setItem(cache, value) } catch (error) {
+    // Accounts have an authoritative IndexedDB copy; guests do not.
+    if (!account) throw error
+  }
   memory.set(cache, value)
-  try { localStorage.setItem(cache, value) } catch { /* IndexedDB remains authoritative for accounts. */ }
 }
 export async function hydratePreferences(account: string) {
   const settings = await loadSettings(account)

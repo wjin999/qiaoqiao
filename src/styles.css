@@ -752,10 +752,6 @@ input:focus-visible {
 .companion-choice[aria-pressed=true] .companion-selected { color: var(--green); background: var(--green-light); }
 .pet-sprite { position: relative; display: inline-block; flex: none; vertical-align: middle; width: var(--pet-size, 128px); }
 .companion-frame { position: relative; display: block; width: 100%; aspect-ratio: 5 / 6; overflow: hidden; transform-origin: 50% 85%; }
-.companion-frame img { position: absolute; display: block; height: 100%; width: 300%; max-width: none; left: calc(var(--pose) * -100%); user-select: none; }
-.companion-accessory { position: absolute; right: -4%; bottom: 5%; width: 30%; border-radius: 50%; background: #fffaf0; box-shadow: 0 2px 8px #66583418; }
-.companion-accessory svg { display: block; width: 100%; }
-.pet-sprite[data-stage="3"] .companion-accessory { background: #e8f1df; }
 .companion-choice > strong { margin-top: 6px; font-size: 18px; }
 .companion-intro { color: var(--muted); font-size: 12px; margin: 7px 0 14px; line-height: 1.6; }
 .companion-card-stat { color: #568063; font-size: 12px; }
@@ -811,19 +807,6 @@ input:focus-visible {
 .pet-free-time { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; column-gap: 8px; }
 .pet-activity-picture { position: relative; width: 100%; grid-row: span 2; }
 .pet-activity-frame { position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; }
-.pet-activity-frame img { position: absolute; width: 400%; height: 100%; max-width: none; left: calc(var(--book) * -100%); user-select: none; }
-.pet-turn-frame img { height: 200%; top: 0; left: 0; }
-/* The approved sheet is four columns by two rows. Only the drawn paw/page moves. */
-.pet-turn-frame[data-turning=true] img { animation: pet-turn-page 1.38s steps(1, end) both; animation-play-state: inherit; }
-@keyframes pet-turn-page {
-  0% { left: -100%; top: 0; }
-  13.043478% { left: -200%; top: 0; }
-  26.086957% { left: -300%; top: 0; }
-  39.130435% { left: 0; top: -100%; }
-  52.173913% { left: -100%; top: -100%; }
-  65.217391% { left: -200%; top: -100%; }
-  78.26087%, 100% { left: -300%; top: -100%; }
-}
 .pet-activity-copy { min-width: 0; }
 .pet-activity-label { display: block; color: #8b917d; font-size: 10px; letter-spacing: .08em; margin: 2px 0 6px; }
 .pet-activity-copy strong { display: block; font-size: 12px; line-height: 1.6; font-weight: 600; color: #53634c; overflow-wrap: anywhere; }
@@ -1022,4 +1005,57 @@ input:focus-visible {
   .deck-detail-title { font-size: 24px; }
   .detail-facts > div { grid-template-columns: 1fr; gap: 0; }
   .mapping-row { grid-template-columns: 1fr; gap: 12px; }
+}
+
+/* Every sprite is clipped in source coordinates, then fitted without stretching. */
+.pet-artwork { display: block; width: 100%; height: 100%; }
+.pet-artwork > svg { display: block; width: 100%; height: 100%; overflow: hidden; }
+.pet-artwork .pet-artwork-loader { display: none; }
+.companion-frame > .pet-artwork, .pet-activity-frame > .pet-artwork { position: absolute; inset: 0; }
+.wardrobe-open { margin-top: 20px; padding: 11px 18px; border: 1px solid #a3b9a5; border-radius: 10px; background: #f5f8ef; color: var(--green); font: inherit; cursor: pointer; }
+.wardrobe-intro { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.wardrobe-pets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wardrobe button { font: inherit; cursor: pointer; }
+.wardrobe button:disabled { cursor: default; opacity: .55; }
+.wardrobe-pets button { border: 1px solid var(--line); border-radius: 12px; background: transparent; padding: 12px; font-weight: 650; }
+.wardrobe-pets button[aria-pressed=true] { border-color: var(--green); background: #edf3e9; color: var(--green); }
+.wardrobe-pets small { display: block; margin-top: 5px; font-weight: 400; font-size: 11px; color: var(--muted); }
+.wardrobe-stage { display: grid; grid-template-columns: 92px minmax(0,1fr) 92px; align-items: center; gap: 14px; margin: 18px 0 10px; padding: 16px; border-radius: 16px; background: radial-gradient(ellipse at 50% 65%, #e3ecd8, #f6f4ee 70%); }
+.wardrobe-slots { display: grid; gap: 16px; }
+.equipment-slot { display: flex; min-height: 82px; padding: 10px 5px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #c5cabb; border-radius: 10px; color: #87907e; font-size: 13px; text-align: center; }
+.equipment-slot small { margin-top: 6px; font-size: 10px; }
+.equipment-slot.equipped { background: #fdfef7; border: 1px solid #8ba987; color: var(--green); box-shadow: inset 0 0 0 3px #e8eee0; }
+.wardrobe-preview { text-align: center; min-width: 0; }
+.wardrobe-preview .pet-sprite { --pet-size: min(100%, 215px); }
+.wardrobe-preview > span:last-child { display: block; font-size: 11px; color: var(--muted); }
+.wardrobe-poses { display: flex; justify-content: center; gap: 8px; margin: 12px 0 20px; }
+.wardrobe-poses button { padding: 6px 14px; border: 1px solid var(--line); background: transparent; border-radius: 20px; font-size: 12px; }
+.wardrobe-poses button[aria-pressed=true] { color: var(--green); border-color: var(--green); }
+.wardrobe-inventory { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.wardrobe-inventory button { display: flex; flex-direction: column; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 6px; background: #faf9f5; }
+.wardrobe-inventory button[aria-pressed=true] { border: 2px solid var(--green); padding: 9px 5px; background: #eef3e9; }
+.wardrobe-inventory .pet-sprite { --pet-size: 78px; max-width: 100%; }
+.wardrobe-inventory strong { font-size: 12px; margin-top: 5px; }
+.wardrobe-inventory small { font-size: 10px; color: var(--muted); margin-top: 6px; }
+.wardrobe-item { margin-top: 18px; }
+.wardrobe-item p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 6px 0 16px; }
+.wardrobe-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.wardrobe-actions button { padding: 10px 16px; border: 1px solid var(--line); border-radius: 9px; background: transparent; }
+.wardrobe-actions .primary-button { background: var(--green); color: white; }
+.wardrobe-status { min-height: 20px; margin: 12px 0 0; font-size: 12px; color: var(--green); }
+@media (max-width: 600px) {
+  .wardrobe-stage { grid-template-columns: 64px minmax(0,1fr) 64px; padding: 12px 8px; gap: 5px; }
+  .equipment-slot { min-height: 68px; font-size: 11px; padding: 6px 3px; }
+  .equipment-slot small { font-size: 9px; }
+  .wardrobe-inventory { gap: 6px; }
+  .wardrobe-inventory strong { font-size: 11px; }
+  .wardrobe-preview .pet-sprite { --pet-size: min(100%, 160px); }
+}
+.wardrobe-preview .pet-free-time { display: block; }
+.wardrobe-preview .pet-activity-picture { max-width: 190px; margin: auto; }
+.wardrobe-preview .pet-activity-copy { display: none; }
+.wardrobe-preview .pet-activity-actions { margin: 0; }
+@media (max-width: 600px) {
+  .wardrobe-poses { gap: 5px; }
+  .wardrobe-poses button { padding: 6px 10px; }
 }

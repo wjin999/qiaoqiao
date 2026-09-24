@@ -1,0 +1,152 @@
+{
+  "golden-bomber-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      556,
+      1098,
+      1642,
+      2172
+    ]
+  },
+  "golden-bomber-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "golden-bomber": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      724,
+      1448,
+      2172
+    ]
+  },
+  "golden-explorer-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      555,
+      1097,
+      1640,
+      2172
+    ]
+  },
+  "golden-explorer-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "golden-explorer": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      724,
+      1448,
+      2172
+    ]
+  },
+  "golden-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      555,
+      1097,
+      1640,
+      2172
+    ]
+  },
+  "golden-retriever": {
+    "width": 1944,
+    "height": 809,
+    "edges": [
+      0,
+      648,
+      1309,
+      1944
+    ]
+  },
+  "golden-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "tuxedo-cat": {
+    "width": 1981,
+    "height": 793,
+    "edges": [
+      0,
+      660,
+      1321,
+      1981
+    ]
+  },
+  "tuxedo-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      543,
+      1086,
+      1629,
+      2172
+    ]
+  },
+  "tuxedo-space-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      543,
+      1086,
+      1629,
+      2172
+    ]
+  },
+  "tuxedo-space-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "tuxedo-space": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      724,
+      1448,
+      2172
+    ]
+  },
+  "tuxedo-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "tuxedo-varsity-reading": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      543,
+      1086,
+      1629,
+      2172
+    ]
+  },
+  "tuxedo-varsity-turn": {
+    "width": 1536,
+    "height": 1024
+  },
+  "tuxedo-varsity": {
+    "width": 2172,
+    "height": 724,
+    "edges": [
+      0,
+      724,
+      1448,
+      2172
+    ]
+  }
+}

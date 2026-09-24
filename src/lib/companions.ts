@@ -9,14 +9,27 @@ export type ActivePetId = typeof PETS[number]['id']
 export type PetId = ActivePetId | 'mole' | 'sparrow' | 'sprout'
 export type PetPose = 'idle' | 'typing' | 'cheer'
 export const PET_PREFERENCE_KEY = 'qiaoqiao.companion.v1'
-export interface CompanionPreferences { petId: ActivePetId; enabled: boolean; animations: boolean }
+export type OutfitId = 'natural' | 'bomber' | 'explorer' | 'varsity' | 'space'
+export const OUTFITS = {
+  golden: [{ id: 'natural', name: '原始造型', points: 0 }, { id: 'bomber', name: '飞行夹克', points: 30 }, { id: 'explorer', name: '森林探险服', points: 150 }],
+  tuxedo: [{ id: 'natural', name: '原始造型', points: 0 }, { id: 'varsity', name: '校园棒球外套', points: 30 }, { id: 'space', name: '星际宇航服', points: 150 }],
+} as const
+export interface CompanionPreferences { petId: ActivePetId; enabled: boolean; animations: boolean; outfits?: Partial<Record<ActivePetId, OutfitId>> }
+export function validOutfit(pet: ActivePetId, value: unknown): OutfitId {
+  return OUTFITS[pet].find((item) => item.id === value)?.id ?? 'natural'
+}
+export function equippedOutfit(preferences: CompanionPreferences, pet: ActivePetId, points: number): OutfitId {
+  const item = OUTFITS[pet].find((entry) => entry.id === preferences.outfits?.[pet])
+  return item && points >= item.points ? item.id : 'natural'
+}
 export const DEFAULT_COMPANION: CompanionPreferences = { petId: 'golden', enabled: true, animations: true }
 export function isActivePetId(value: unknown): value is ActivePetId { return PETS.some((pet) => pet.id === value) }
 export function isPetId(value: unknown): value is PetId { return isActivePetId(value) || value === 'mole' || value === 'sparrow' || value === 'sprout' }
 export function companionPreferences(value: string): CompanionPreferences {
   try {
     const data = JSON.parse(value)
-    return { petId: isActivePetId(data?.petId) ? data.petId : 'golden', enabled: data?.enabled !== false, animations: data?.animations !== false }
+    return { petId: isActivePetId(data?.petId) ? data.petId : 'golden', enabled: data?.enabled !== false, animations: data?.animations !== false,
+      ...(data?.outfits && typeof data.outfits === 'object' ? { outfits: { golden: validOutfit('golden', data.outfits.golden), tuxedo: validOutfit('tuxedo', data.outfits.tuxedo) } } : {}) }
   } catch { return { ...DEFAULT_COMPANION } }
 }
 export function petGrowth(reviews: ReviewEntry[]): Record<ActivePetId, number> {
