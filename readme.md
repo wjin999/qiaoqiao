@@ -32,3 +32,15 @@ npm run dev
 ## 卡组来源
 
 默认卡组由 **[egg rolls](https://github.com/5mdld/anki-jlpt-decks)** 制作，采用 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/deed.zh-hans) 许可。本项目提取文本、整理注音并去重，改变了数据格式与呈现方式。卡组内容限非商业使用，完整署名和修改说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+
+
+--------
+1.增加英语，与日语同样的排版模式
+  1.1.英语卡组后续追加。先使用几句话测试。
+2.项目名改为敲敲（qiaoqiao）
+3.项目icon改为一个大锤子敲打键盘。生成5个可爱风格icon。
+4.宠物进化的模样固定，删除衣柜换装等功能。宠物进化成什么样子后续再决定。
+5.我想增加口语卡组，这是本项目的主要目标，让用户打字记住→让口语更流利。具体用什么卡组后续再看。
+6.增加中文或目标语言的显示隐藏开关，不需要切换快捷键
+
