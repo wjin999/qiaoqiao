@@ -96,6 +96,15 @@ function openDatabase(account: string | null): Promise<IDBDatabase> {
   return opening
 }
 
+// Asks the browser not to evict the learning records under storage pressure (Safari also
+// clears script-written data for sites left unvisited). Browsers may decline; that is fine.
+export async function requestPersistentStorage() {
+  try {
+    const storage = navigator.storage
+    if (storage?.persist && !(await storage.persisted?.())) await storage.persist()
+  } catch { /* Best effort only. */ }
+}
+
 export function announceProgressUpdate() {
   try { window.localStorage.setItem(PROGRESS_UPDATED_KEY, crypto.randomUUID()) } catch { /* IndexedDB is authoritative. */ }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import lessonData from '../data/egg-rolls.json'
+import { DEFAULT_DECK_ID } from './default-deck'
 import type { Lesson, LessonItem } from '../types'
 import { formatDuration, sampleItems } from './practice'
 
@@ -38,7 +39,7 @@ describe('sampleItems', () => {
 
 describe('Japanese lesson data', () => {
   it('ships the attributed egg rolls library with unique source ids', () => {
-    expect(japaneseLesson.id).toBe('eggrolls-jlpt-v3.5')
+    expect(japaneseLesson.id).toBe(DEFAULT_DECK_ID)
     expect(japaneseLesson.items).toHaveLength(15891)
     expect(new Set(japaneseLesson.items.map((item) => item.id)).size).toBe(15891)
     expect(japaneseLesson.metadata).toMatchObject({ author: 'egg rolls', license: 'CC BY-NC 4.0', noteCount: 10635, builtIn: true })

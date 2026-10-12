@@ -24,7 +24,7 @@ vi.mock('./lib/cloud-sync', async (importOriginal) => ({
   ...await importOriginal<typeof import('./lib/cloud-sync')>(),
   cloudTransport: () => ({ push: network.push, pull: network.pull }),
 }))
-vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
+vi.mock('./lib/default-deck', () => ({ DEFAULT_DECK_ID: 'test-deck', loadDefaultDeck: async () => ({
   schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
   items: [0, 1].map((index) => ({ id: `sentence-${index}`, text: `猫${index}。`, nativeText: '猫', ruby: [{ text: `猫${index}。` }] })),
 }) }))

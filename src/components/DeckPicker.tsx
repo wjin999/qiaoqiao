@@ -12,6 +12,14 @@ interface Props {
   disabled?: boolean
 }
 
+export function DeckLoading({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return <div className="deck-panel">
+    <div className="deck-panel-heading"><span className="eyebrow">我的卡组</span></div>
+    {error ? <p role="alert" className="error-message">{error} <button type="button" className="text-button" onClick={onRetry}>重试</button></p>
+      : <p role="status" className="deck-summary">正在加载 egg rolls 例句库…</p>}
+  </div>
+}
+
 export function DeckPicker({ lessons, lesson, onSelect, onDelete, level, onLevel, disabled = false }: Props) {
   const [details, setDetails] = useState(false)
   return (

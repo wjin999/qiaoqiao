@@ -8,12 +8,13 @@ import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/sto
 import { loadImportedDecks } from './lib/deck-storage'
 import type { Lesson } from './types'
 
-vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
+const deck = vi.hoisted(() => ({ ready: Promise.resolve() as Promise<void> }))
+vi.mock('./lib/default-deck', () => ({ DEFAULT_DECK_ID: 'test-deck', loadDefaultDeck: async () => { await deck.ready; return {
   schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
   items: Array.from({ length: 12 }, (_, index) => ({ id: `sentence-${index}`, sourceNoteId: `note-${index}`,
     text: index === 0 ? '猫1234。' : `猫${index}。`, nativeText: '猫', level: 'N5',
     ruby: [{ text: '猫', reading: 'ねこ' }, { text: index === 0 ? '1234。' : `${index}。` }] })),
-}) }))
+} } }))
 
 let container: HTMLDivElement
 let root: Root
@@ -128,6 +129,33 @@ describe('keyboard memory reviews', () => {
     expect(container.textContent).not.toContain('删除此卡组')
   })
 
+  it('shows the home screen while the default deck is still loading', async () => {
+    let release!: () => void
+    deck.ready = new Promise<void>((resolve) => { release = resolve })
+    try {
+      await act(async () => root.render(createElement(StrictMode, null, createElement(App))))
+      await until(() => container.textContent?.includes('共 0 轮') ?? false)
+      expect(button('正在加载例句库').disabled).toBe(true)
+      expect(container.textContent).toContain('正在加载 egg rolls 例句库')
+      await act(async () => release())
+      await until(() => [...container.querySelectorAll('button')].some((element) => element.textContent?.includes('开始练习') && !element.disabled))
+    } finally { deck.ready = Promise.resolve() }
+  })
+
+  it('keeps characters outside the BMP whole while typing', async () => {
+    await seedLegacyDeck({ schemaVersion: 2, id: 'rare', title: '生僻字', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+      items: [{ id: 'rare:1', text: '𠮟る', nativeText: '责备', ruby: [{ text: '𠮟', reading: 'しか' }, { text: 'る' }] }] })
+    await mount()
+    act(() => {
+      const element = container.querySelector<HTMLSelectElement>('#deck-select')!
+      element.value = 'rare'; element.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await start(); type('𠮟')
+    const characters = [...container.querySelectorAll('.sentence .character')]
+    expect(characters.map((node) => node.textContent)).toEqual(['𠮟', 'る'])
+    expect(characters.map((node) => node.className)).toEqual(['character character--correct', 'character character--pending'])
+  })
+
   it('offers no in-app import and points to the author instead', async () => {
     await mount()
     expect(container.textContent).not.toContain('添加 Anki 卡组')
@@ -217,6 +245,8 @@ describe('keyboard memory reviews', () => {
   })
 
   it('finishes a full round once and stops introducing new cards after the daily limit', async () => {
+    const persist = vi.fn(async () => true)
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { persisted: async () => false, persist } })
     await mount(); await start()
     for (let index = 0; index < 10; index++) {
       type(container.querySelector('.sentence')!.getAttribute('aria-label')!)
@@ -233,6 +263,9 @@ describe('keyboard memory reviews', () => {
     act(() => button('回到主页').click())
     expect(container.textContent).toContain('今日已学新句 10 句')
     expect(button('暂时没有待练句子').disabled).toBe(true)
+    // Once a round is finished, ask the browser to keep the records.
+    expect(persist).toHaveBeenCalledTimes(1)
+    delete (navigator as { storage?: unknown }).storage
   })
 
   it('updates and pages long-term history after another tab saves', async () => {

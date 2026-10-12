@@ -1,6 +1,7 @@
 import deckUrl from '../data/egg-rolls.json?url'
 import type { Lesson } from '../types'
 
+export const DEFAULT_DECK_ID = 'eggrolls-jlpt-v3.5'
 let pending: Promise<Lesson> | undefined
 
 export function loadDefaultDeck(): Promise<Lesson> {
