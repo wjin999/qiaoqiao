@@ -28,7 +28,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.open = false }
   mock.login.mockResolvedValue({ error: null }); mock.signup.mockResolvedValue({ data: { session: null }, error: null })
   mock.reset.mockResolvedValue({ error: null }); mock.update.mockResolvedValue({ error: null })
-  mock.sync.mockResolvedValue({ changed: { progress: false, settings: false, decks: false }, retry: 0, rejected: 0, quarantined: 0, reasons: [] })
+  mock.sync.mockResolvedValue({ changed: false, retry: 0, rejected: 0, quarantined: 0, reasons: [] })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); setAccountScope(null) })

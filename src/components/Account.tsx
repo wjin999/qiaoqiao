@@ -3,9 +3,8 @@ import type { Session } from '@supabase/supabase-js'
 import { accountError, authRedirect, supabase } from '../lib/supabase'
 import { CLOUD_APPLIED, getAccountScope, LOCAL_CHANGED, setAccountScope } from '../lib/account-scope'
 import { cloudTransport, syncAccount, syncNotice } from '../lib/cloud-sync'
-import { deckFitsCloud, exportProgress, mergeProgress, pendingChanges, storeDeck, storeSetting } from '../lib/storage'
+import { exportProgress, mergeProgress, pendingChanges, storeSetting } from '../lib/storage'
 import { guestPreferences, hydratePreferences } from '../lib/preferences'
-import { loadImportedDecks } from '../lib/deck-storage'
 import { Modal } from './Modal'
 
 const AccountContext = createContext<{
@@ -54,8 +53,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     try {
       const report = await syncAccount(current.user.id, cloudTransport(current.access_token))
       if (currentSession.current?.user.id !== current.user.id) return
-      await hydratePreferences(current.user.id)
-      window.dispatchEvent(new CustomEvent(CLOUD_APPLIED, { detail: report.changed }))
+      if (report.changed) window.dispatchEvent(new Event(CLOUD_APPLIED))
       // Changes the server asked to retry later stay queued; anything beyond them is new.
       const pending = await pendingChanges(current.user.id)
       setStatus(pending.length > report.retry ? '有新记录待同步'
@@ -142,15 +140,10 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
     const account = session.user.id
     setBusy(true); setError(''); setMessage('')
     try {
-      const [progress, decks] = await Promise.all([exportProgress(null), loadImportedDecks(null)])
-      await mergeProgress(progress, account)
-      const tooLarge = decks.filter((deck) => !deckFitsCloud(deck))
-      for (const deck of decks) if (deckFitsCloud(deck)) await storeDeck(deck, account)
+      await mergeProgress(await exportProgress(null), account)
       for (const [key, value] of Object.entries(guestPreferences())) await storeSetting(key, value, account)
       await hydratePreferences(account); window.dispatchEvent(new Event(CLOUD_APPLIED))
-      setMergeConfirm(false)
-      setMessage('本机游客记录已合并，游客原记录仍保留。点击同步即可保存到云端。'
-        + (tooLarge.length ? `卡组「${tooLarge.map((deck) => deck.title).join('」「')}」超过 10 MB 的云同步上限，仍只在游客模式中可用。` : ''))
+      setMergeConfirm(false); setMessage('本机游客记录已合并，游客原记录仍保留。点击同步即可保存到云端。')
     } catch (error) { setError(accountError(error)) }
     finally { setBusy(false) }
   }
@@ -173,15 +166,15 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
               catch (error) { setError(accountError(error)) } finally { setBusy(false) }
             }}>退出登录</button>
           </div>
-          <p className="backup-help">练习逐句保存在本机，完成一组后自动同步学习进度与设置；手动同步请关闭此窗口，点击页面右上角的「同步」。换设备前确认已同步，再到新设备登录并同步。</p>
-          {mergeConfirm ? <div className="account-confirm"><p>将本浏览器游客模式的学习记录、设置和自定义卡组合并到当前账号。请确认这些记录属于你。</p>
+          <p className="backup-help">练习逐句保存在本机，完成一组后自动同步学习记录（设置只保存在本机）；手动同步请关闭此窗口，点击页面右上角的「同步」。换设备前确认已同步，再到新设备登录并同步。</p>
+          {mergeConfirm ? <div className="account-confirm"><p>将本浏览器游客模式的学习记录和设置合并到当前账号。请确认这些记录属于你。</p>
             <button type="button" disabled={busy || syncing} onClick={() => void mergeGuest()}>确认合并到此账号</button>
             <button type="button" disabled={busy} onClick={() => setMergeConfirm(false)}>取消</button></div>
             : <button type="button" className="text-button" disabled={busy || syncing} onClick={() => setMergeConfirm(true)}>合并本机游客记录</button>}
           <p className="backup-help">退出后账号记录仍保存在此浏览器，但与游客和其他账号隔离。公共设备用完后请清除网站数据。</p>
           <button type="button" className="text-button danger-button" disabled={busy || syncing} onClick={() => choose('delete')}>删除账号</button>
         </> : <form onSubmit={(event) => void submit(event)}>
-          {action === 'delete' ? <p>删除此账号及全部云端卡组和学习记录，无法撤销。请先导出备份，再输入当前密码确认。此操作不删除游客记录。</p>
+          {action === 'delete' ? <p>删除此账号及全部云端学习记录，无法撤销。请先导出备份，再输入当前密码确认。此操作不删除游客记录。</p>
             : action === 'reset' || action === 'change' ? <p>设置新的登录密码。</p>
             : <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>}
           {action === 'change' && <label>当前密码<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>}

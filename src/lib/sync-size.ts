@@ -1,9 +1,6 @@
-import type { CloudKind } from './cloud-types'
-
-// Mirrors supabase/migrations: records are limited by octet_length(value::text), batches by
-// octet_length(changes::text) <= 12 MiB. The batch budget keeps 1 MiB of headroom.
-export const SYNC_LIMITS = { batchRecords: 100, batchBytes: 11 * 1024 * 1024, deckBytes: 10 * 1024 * 1024, recordBytes: 16 * 1024 }
-export const recordLimit = (kind: CloudKind) => kind === 'deck' ? SYNC_LIMITS.deckBytes : SYNC_LIMITS.recordBytes
+// Mirrors supabase/migrations: each record is limited by octet_length(value::text) <= 16 KiB,
+// each batch by octet_length(changes::text) <= 12 MiB. The batch budget keeps 1 MiB of headroom.
+export const SYNC_LIMITS = { batchRecords: 100, batchBytes: 11 * 1024 * 1024, recordBytes: 16 * 1024 }
 
 // PostgreSQL prints jsonb with ", " and ": " separators, so for JSON.stringify output the server
 // counts its UTF-8 length plus one byte per separator outside string literals.

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { Lesson } from '../types'
 import { Modal } from './Modal'
 
@@ -7,21 +6,13 @@ function safeLink(value?: string): string | undefined {
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined } catch { return undefined }
 }
 
-export function DeckDetails({ lesson, onClose, onDelete }: { lesson: Lesson; onClose: () => void; onDelete?: () => Promise<void> }) {
-  const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState('')
+export function DeckDetails({ lesson, onClose }: { lesson: Lesson; onClose: () => void }) {
   const metadata = lesson.metadata
   const source = safeLink(metadata?.sourceUrl)
   const licenseUrl = safeLink(metadata?.licenseUrl)
   const readings = lesson.items.filter((item) => item.ruby.some((part) => part.reading)).length
-  async function remove() {
-    setDeleting(true); setError('')
-    try { await onDelete!(); onClose() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '删除失败，请重试。'); setDeleting(false) }
-  }
   return (
-    <Modal title="卡组详情" onClose={() => { if (!deleting) onClose() }}>
+    <Modal title="卡组详情" onClose={onClose}>
       <span className="eyebrow">{metadata?.builtIn ? '默认卡组' : '我的导入'}</span>
       <h3 className="deck-detail-title">{lesson.title}</h3>
       <p className="detail-description">{metadata?.description || '日语跟打练习卡组。'}</p>
@@ -55,16 +46,6 @@ export function DeckDetails({ lesson, onClose, onDelete }: { lesson: Lesson; onC
         <p>{metadata.modifications.replaceAll('TypeLingo', '日语敲敲')}</p>
         <p>排除关联词 / 反义词 {metadata.relatedCount.toLocaleString('zh-CN')} 条；去重 {metadata.duplicateCount} 条；缺少有效句对 {metadata.missingCount} 条。</p>
         {metadata.unalignedReadingCount > 0 && <p>{metadata.unalignedReadingCount} 条注音与原句无法完全对齐，保留原句并显示为无注音。</p>}
-      </section>}
-      {onDelete && !metadata?.builtIn && <section className="deck-danger" aria-label="删除卡组">
-        {confirming ? <>
-          <p>删除「{lesson.title}」？练习记录会保留；登录时，其他设备同步后也会删除。之后如需再用，请联系作者。</p>
-          <div className="modal-actions">
-            <button type="button" className="secondary-button" disabled={deleting} onClick={() => setConfirming(false)}>取消</button>
-            <button type="button" className="primary-button danger-primary" disabled={deleting} onClick={() => void remove()}>{deleting ? '正在删除…' : '确认删除'}</button>
-          </div>
-        </> : <button type="button" className="text-button danger-button" onClick={() => setConfirming(true)}>删除此卡组</button>}
-        {error && <p role="alert" className="error-message">{error}</p>}
       </section>}
     </Modal>
   )

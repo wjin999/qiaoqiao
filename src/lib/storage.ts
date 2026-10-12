@@ -1,10 +1,8 @@
 import type { HistoryEntry, LessonItem } from '../types'
 import { reviewSentence, sentenceKey, type ReviewEntry, type SentenceProgress } from './scheduler'
 import { getAccountScope, scopedDatabase, notifyLocalChange } from './account-scope'
-import { cloudKey, isDeckTombstone, type CloudChanges, type CloudKind, type CloudMutation, type CloudRow, type RejectedChange } from './cloud-types'
-import type { Lesson } from '../types'
+import { cloudKey, type CloudKind, type CloudMutation, type CloudRow, type RejectedChange } from './cloud-types'
 import { rebuildCards } from './reconcile'
-import { jsonbTextBytes, SYNC_LIMITS } from './sync-size'
 
 export const HISTORY_KEY = 'typelingo.history.ja.v2'
 export const PERMANENTLY_SKIPPED_KEY = 'typelingo.skipped-sentences.ja.v1'
@@ -12,6 +10,7 @@ export const PROGRESS_UPDATED_KEY = 'typelingo.progress.updated.v3'
 export const PROGRESS_DATABASE = 'typelingo.progress'
 const DATABASE_VERSION = 3
 // quarantine: pulled rows this version cannot read yet; rejected: changes the server will never accept.
+// decks is no longer used (decks are built into the site) but stays so existing databases keep their schema.
 const STORES = ['history', 'cards', 'reviews', 'skips', 'meta', 'outbox', 'settings', 'decks', 'seeds', 'quarantine', 'rejected']
 export interface ProgressData {
   history: HistoryEntry[]
@@ -279,27 +278,6 @@ export async function mergeProgress(imported: ProgressData, account = getAccount
   }, account)
 }
 
-export async function loadStoredDecks(account = getAccountScope()): Promise<Lesson[]> {
-  return transaction(['decks'], 'readonly', (tx, done) => {
-    const request = tx.objectStore('decks').getAll(); request.onsuccess = () => done(request.result)
-  }, account)
-}
-
-export const deckFitsCloud = (lesson: Lesson) => jsonbTextBytes(JSON.stringify(lesson)) <= SYNC_LIMITS.deckBytes
-
-export async function storeDeck(lesson: Lesson, account = getAccountScope()) {
-  if (account && !deckFitsCloud(lesson)) throw new Error('卡组超过 10 MB 的云同步上限，未保存到账号。')
-  await transaction<void>(['decks'], 'readwrite', (tx) => {
-    tx.objectStore('decks').put(lesson); enqueue(tx, 'deck', lesson.id, lesson)
-  }, account)
-}
-
-export async function deleteStoredDeck(id: string, account = getAccountScope()) {
-  await transaction<void>(['decks'], 'readwrite', (tx) => {
-    tx.objectStore('decks').delete(id); enqueue(tx, 'deck', id, { id, deleted: true })
-  }, account)
-}
-
 export async function loadSettings(account = getAccountScope()): Promise<Record<string, string>> {
   return transaction(['settings'], 'readonly', (tx, done) => {
     const request = tx.objectStore('settings').getAll()
@@ -307,10 +285,9 @@ export async function loadSettings(account = getAccountScope()): Promise<Record<
   }, account)
 }
 
+// Settings stay on this device; only learning records are synced.
 export async function storeSetting(key: string, value: string, account = getAccountScope()) {
-  await transaction<void>(['settings'], 'readwrite', (tx) => {
-    tx.objectStore('settings').put({ id: key, value }); enqueue(tx, 'setting', key, value)
-  }, account)
+  await transaction<void>(['settings'], 'readwrite', (tx) => { tx.objectStore('settings').put({ id: key, value }) }, account, true)
 }
 
 export async function pendingChanges(account: string | null): Promise<CloudMutation[]> {
@@ -368,11 +345,12 @@ function rebuildTouched(tx: IDBTransaction, touched: Map<string, [string, string
   }
 }
 
-// Applies one pulled page (or, with a null cursor, quarantined rows that are now readable).
-// Rows this version cannot read are kept aside instead of blocking the rest of the page.
+// Applies one pulled page (or, with a null cursor, quarantined rows that are now readable) and
+// reports whether any learning record changed. Rows this version cannot read are kept aside
+// instead of blocking the rest of the page.
 export async function applyCloudRows(account: string, rows: CloudRow[], cursor: number | null,
-  readable: (row: CloudRow) => boolean = () => true): Promise<CloudChanges> {
-  const changed: CloudChanges = { progress: false, settings: false, decks: false }
+  readable: (row: CloudRow) => boolean = () => true): Promise<boolean> {
+  let changed = false
   await transaction<void>(STORES, 'readwrite', (tx, _done, fail) => {
     const store = (name: string) => tx.objectStore(name)
     const oldCursor = store('meta').get('cloud-cursor')
@@ -388,28 +366,23 @@ export async function applyCloudRows(account: string, rows: CloudRow[], cursor: 
           const id = cloudKey(row.kind, row.key)
           store('quarantine').delete(id)
           if (!readable(row)) { store('quarantine').put({ ...row, id }); continue }
-          // A mutation made while the request was in flight still belongs to this device.
-          if (pending.result > 0 && ['setting', 'skip', 'deck'].includes(row.kind)) continue
+          // A skip changed while the request was in flight still belongs to this device.
+          if (pending.result > 0 && row.kind === 'skip') continue
           if (row.kind === 'skip') {
             if (row.value) store('skips').put({ id: row.key }); else store('skips').delete(row.key)
-            changed.progress = true
-          } else if (row.kind === 'setting') {
-            store('settings').put({ id: row.key, value: row.value }); changed.settings = true
-          } else if (row.kind === 'deck') {
-            if (isDeckTombstone(row.value)) store('decks').delete(row.key); else store('decks').put(row.value)
-            changed.decks = true
+            changed = true
           } else if (row.kind === 'review') {
             const review = row.value as ReviewEntry
-            store('reviews').put(review); changed.progress = true
+            store('reviews').put(review); changed = true
             if (review.rating !== null) touched.set(sentenceKey(review.lessonId, review.sentenceId), [review.lessonId, review.sentenceId])
           } else if (row.kind === 'seed') {
             const seed = row.value as SentenceProgress, old = previous?.result as SentenceProgress | undefined
             if (!old || old.updatedAt < seed.updatedAt) {
-              store('seeds').put(seed); touched.set(seed.id, [seed.lessonId, seed.sentenceId]); changed.progress = true
+              store('seeds').put(seed); touched.set(seed.id, [seed.lessonId, seed.sentenceId]); changed = true
             }
           } else if (row.kind === 'history') {
             const entry = row.value as HistoryEntry, old = previous?.result as HistoryEntry | undefined
-            if (!old || old.completedAt <= entry.completedAt) { store('history').put(entry); changed.progress = true }
+            if (!old || old.completedAt <= entry.completedAt) { store('history').put(entry); changed = true }
           }
         }
         if (cursor !== null) store('meta').put({ id: 'cloud-cursor', value: cursor })

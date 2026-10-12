@@ -79,8 +79,9 @@ it.each([false, true])('syncs a completed round once after all learning records 
   expect(batch.filter((row: any) => row.kind === 'review').some((row: any) => 'petId' in row.value)).toBe(false)
   expect(batch).toEqual(expect.arrayContaining([
     expect.objectContaining({ kind: 'history', value: expect.objectContaining({ sentenceCount: 2, partial: false }) }),
-    ...free ? [expect.objectContaining({ kind: 'setting', key: 'typelingo.mode', value: 'free' })] : [],
   ]))
+  // Settings (such as the practice mode chosen above) stay on this device.
+  expect(batch.map((row: any) => row.kind).sort()).toEqual(['history', 'review', 'review'])
   expect((await exportProgress()).reviews).toHaveLength(2)
   await act(async () => release()); await until(() => container.textContent?.includes('已同步') ?? false)
   expect(await pendingChanges(getAccountScope()!)).toHaveLength(0)

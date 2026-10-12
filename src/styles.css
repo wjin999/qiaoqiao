@@ -827,6 +827,7 @@ input:focus-visible {
   background: var(--paper);
   color: var(--ink);
 }
+.deck-title { margin: 0; font-size: 18px; font-weight: 650; line-height: 1.5; }
 .deck-summary { margin-top: 10px; color: var(--muted); font-size: 12px; }
 .deck-example { margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--line); }
 .deck-example p { margin: 0 0 8px; font-family: "Yu Mincho", "Noto Serif JP", serif; font-size: 24px; line-height: 1.65; color: var(--green); }
@@ -868,9 +869,6 @@ input:focus-visible {
 .license-panel li + li { margin-top: 8px; }
 .conversion-note { margin-top: 24px; font-size: 12px; line-height: 1.8; color: var(--muted); }
 .error-message { padding: 12px 16px; border-radius: 8px; background: var(--red-light); color: #96372d; font-size: 13px; line-height: 1.7; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
-.deck-danger { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.8; }
-.primary-button.danger-primary { border-color: var(--red); background: var(--red); }
 
 @media (max-width: 780px) {
   .deck-panel { margin-top: 24px; }

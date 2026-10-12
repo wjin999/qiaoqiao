@@ -2,35 +2,8 @@ import { acknowledgeChanges, announceProgressUpdate, applyCloudRows, cloudCursor
 import { getAccountScope } from './account-scope'
 import { publishableKey, supabaseUrl } from './supabase'
 import { validCard, validReview } from './progress-backup'
-import { isPreference, isRetiredPreference } from './preferences'
-import { isDeckTombstone, type CloudChanges, type CloudMutation, type CloudRow, type PushResult, type RejectedChange } from './cloud-types'
-import { jsonbTextBytes, recordLimit, SYNC_LIMITS } from './sync-size'
-import type { Lesson } from '../types'
-
-export function validDeck(value: unknown): value is Lesson {
-  if (!value || typeof value !== 'object') return false
-  const deck = value as Lesson
-  const metadata = deck.metadata
-  const metadataValid = metadata === undefined || (!!metadata && typeof metadata === 'object'
-    && typeof metadata.description === 'string'
-    && ['author', 'version', 'sourceUrl', 'license', 'licenseUrl', 'modifications', 'sourceFile'].every((key) => {
-      const field = (metadata as unknown as Record<string, unknown>)[key]
-      return field === undefined || typeof field === 'string'
-    })
-    && ['noteCount', 'cardCount', 'relatedCount', 'duplicateCount', 'missingCount', 'unalignedReadingCount'].every((key) => {
-      const field = (metadata as unknown as Record<string, unknown>)[key]
-      return typeof field === 'number' && Number.isSafeInteger(field) && field >= 0
-    })
-    && (metadata.licenseTerms === undefined || (Array.isArray(metadata.licenseTerms) && metadata.licenseTerms.every((term) => typeof term === 'string'))))
-  return deck.schemaVersion === 2 && typeof deck.id === 'string' && typeof deck.title === 'string'
-    && deck.nativeLanguage === 'zh-CN' && deck.targetLanguage === 'ja' && Array.isArray(deck.items)
-    && deck.items.length > 0 && deck.items.length <= 100000
-    && deck.items.every((item) => item && typeof item.id === 'string' && typeof item.text === 'string'
-      && typeof item.nativeText === 'string' && (item.level === undefined || typeof item.level === 'string')
-      && Array.isArray(item.ruby) && item.ruby.every((part) => part && typeof part.text === 'string'
-        && (part.reading === undefined || typeof part.reading === 'string')))
-    && metadataValid
-}
+import { RETIRED_KINDS, SYNCED_KINDS, type CloudMutation, type CloudRow, type PushResult, type RejectedChange } from './cloud-types'
+import { jsonbTextBytes, SYNC_LIMITS } from './sync-size'
 
 // The cursor depends on these fields; a row that has them but is otherwise unreadable
 // (e.g. written by a newer version) is quarantined instead of blocking the sync.
@@ -41,12 +14,10 @@ function validEnvelope(row: CloudRow): boolean {
 export function validCloudRow(row: CloudRow): boolean {
   if (!validEnvelope(row)) return false
   if (row.kind === 'skip') return typeof row.value === 'boolean'
-  if (row.kind === 'setting') return (isPreference(row.key) || isRetiredPreference(row.key)) && typeof row.value === 'string'
   if (!row.value || (row.value as { id?: string }).id !== row.key) return false
   if (row.kind === 'review') return validReview(row.value)
   if (row.kind === 'history') return validHistoryEntry(row.value)
-  if (row.kind === 'seed') return validCard(row.value)
-  return row.kind === 'deck' && (isDeckTombstone(row.value) || validDeck(row.value))
+  return row.kind === 'seed' && validCard(row.value)
 }
 
 export interface SyncTransport {
@@ -89,7 +60,8 @@ export function cloudTransport(accessToken: string): SyncTransport {
 }
 
 export interface SyncReport {
-  changed: CloudChanges
+  // Whether any learning record arrived from the cloud.
+  changed: boolean
   // Changes kept queued for a later sync, changes the server will never accept, and pulled rows this version cannot read.
   retry: number
   rejected: number
@@ -104,22 +76,22 @@ export function syncNotice(report: SyncReport): string {
       : report.reasons.includes('account_sync_quota_exceeded') ? `云端容量已满，${report.retry} 条记录暂存本机`
         : `${report.retry} 条记录稍后上传`)
   }
-  if (report.rejected) notes.push(`${report.rejected} 条记录超出云端限制，仅保存在本机`)
+  if (report.rejected) notes.push(`${report.rejected} 条记录无法上传，仅保存在本机`)
   if (report.quarantined) notes.push(`${report.quarantined} 条云端记录需刷新网页后读取`)
   return notes.length ? `（${notes.join('；')}）` : ''
 }
 
 export async function syncAccount(account: string, transport: SyncTransport): Promise<SyncReport> {
-  const report: SyncReport = { changed: { progress: false, settings: false, decks: false }, retry: 0, rejected: 0, quarantined: 0, reasons: [] }
+  const report: SyncReport = { changed: false, retry: 0, rejected: 0, quarantined: 0, reasons: [] }
   const active = () => account === getAccountScope()
   const note = (reason: string) => { if (!report.reasons.includes(reason)) report.reasons.push(reason) }
-  const merge = (changed: CloudChanges) => {
-    report.changed = { progress: report.changed.progress || changed.progress,
-      settings: report.changed.settings || changed.settings, decks: report.changed.decks || changed.decks }
-  }
+  const merge = (changed: boolean) => { report.changed ||= changed }
 
   async function push() {
-    const pending = await pendingChanges(account)
+    const queued = await pendingChanges(account)
+    // Earlier versions also queued settings and decks, which are no longer synced.
+    const pending = queued.filter((change) => SYNCED_KINDS.has(change.kind))
+    if (pending.length < queued.length) await acknowledgeChanges(account, queued.filter((change) => !SYNCED_KINDS.has(change.kind)))
     const tooLarge: RejectedChange[] = []
     let batch: CloudMutation[] = []; let bytes = 2
     async function send() {
@@ -140,7 +112,7 @@ export async function syncAccount(account: string, transport: SyncTransport): Pr
     for (const change of pending) {
       if (!active()) return
       // Measure the way the server does, and never send what it cannot store.
-      if (jsonbTextBytes(JSON.stringify(change.value)) > recordLimit(change.kind)) {
+      if (jsonbTextBytes(JSON.stringify(change.value)) > SYNC_LIMITS.recordBytes) {
         tooLarge.push({ change, error: 'sync_record_too_large' }); continue
       }
       const size = jsonbTextBytes(JSON.stringify(change)) + 2
@@ -163,8 +135,9 @@ export async function syncAccount(account: string, transport: SyncTransport): Pr
       if (!rows.length) break
       if (rows.some((row, index) => row.version <= (index ? rows[index - 1]!.version : cursor))) throw new Error('云端同步顺序无效，请重试。')
       cursor = rows[rows.length - 1]!.version
-      // Settings of retired features are accepted and ignored.
-      merge(await applyCloudRows(account, rows.filter((row) => !(row.kind === 'setting' && isRetiredPreference(row.key))), cursor, validCloudRow))
+      // Settings and decks stored by earlier versions are not learning records. Any other kind
+      // this version does not know is quarantined by applyCloudRows until the page is updated.
+      merge(await applyCloudRows(account, rows.filter((row) => !RETIRED_KINDS.has(row.kind)), cursor, validCloudRow))
       if (rows.length < 100) break
     }
     // Rows an earlier version of this page could not read may be readable now.
@@ -185,7 +158,7 @@ export async function syncAccount(account: string, transport: SyncTransport): Pr
       if (pushError) throw pushError
       return report
     } finally {
-      if (report.changed.progress || report.changed.settings || report.changed.decks) announceProgressUpdate()
+      if (report.changed) announceProgressUpdate()
     }
   }
   // Serialize complete upload/pull cycles across tabs, as well as within the UI.

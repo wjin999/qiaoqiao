@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
-import { loadImportedDecks } from './lib/deck-storage'
-import type { Lesson } from './types'
 
 const deck = vi.hoisted(() => ({ ready: Promise.resolve() as Promise<void> }))
 vi.mock('./lib/default-deck', () => ({ DEFAULT_DECK_ID: 'test-deck', loadDefaultDeck: async () => { await deck.ready; return {
@@ -48,19 +46,6 @@ async function start() {
   await until(() => !!container.querySelector('#typing-input'))
 }
 const input = () => container.querySelector<HTMLInputElement>('#typing-input')!
-// Decks imported by earlier versions stay in this guest database.
-async function seedLegacyDeck(lesson: Lesson) {
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('typelingo.decks.v1', 1)
-    request.onupgradeneeded = () => request.result.createObjectStore('decks', { keyPath: 'id' })
-    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
-  })
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction('decks', 'readwrite'); tx.objectStore('decks').put(lesson)
-    tx.oncomplete = resolve; tx.onabort = reject
-  })
-  db.close()
-}
 function type(value: string) {
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input(), value)
@@ -83,50 +68,17 @@ describe('keyboard memory reviews', () => {
     expect(saved).toMatchObject({ mode: 'memory', rating: 1, sentenceId: 'sentence-0' })
     expect(saved).not.toHaveProperty('petId')
   })
-  it('restores the selected imported deck and each deck’s own level after reopening', async () => {
-    await seedLegacyDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-      items: [{ id: 'imported:1', text: '猫', nativeText: '猫', level: 'N3', ruby: [{ text: '猫' }] }] })
+  it('remembers the practice range after reopening', async () => {
     await mount()
-    function select(id: string, value: string) {
-      act(() => {
-        const element = container.querySelector<HTMLSelectElement>(`#${id}`)!
-        element.value = value; element.dispatchEvent(new Event('change', { bubbles: true }))
-      })
-    }
-    select('level-select', 'N5')
-    select('deck-select', 'imported')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('all')
-    select('level-select', 'N3')
-    select('deck-select', 'test-deck')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N5')
-    select('deck-select', 'imported')
+    act(() => {
+      const element = container.querySelector<HTMLSelectElement>('#level-select')!
+      element.value = 'N5'; element.dispatchEvent(new Event('change', { bubbles: true }))
+    })
     act(() => root.unmount())
     root = createRoot(container)
     await mount()
-    expect(container.querySelector<HTMLSelectElement>('#deck-select')?.value).toBe('imported')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N3')
-    await start()
-    expect(container.querySelector('.sentence')?.getAttribute('aria-label')).toBe('猫')
-  })
-
-  it('deletes a previously imported deck and falls back to the default deck', async () => {
-    HTMLDialogElement.prototype.showModal = function () { this.open = true }
-    HTMLDialogElement.prototype.close = function () { this.open = false }
-    await seedLegacyDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-      items: [{ id: 'imported:1', text: '猫', nativeText: '猫', ruby: [{ text: '猫' }] }] })
-    await mount()
-    act(() => {
-      const element = container.querySelector<HTMLSelectElement>('#deck-select')!
-      element.value = 'imported'; element.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    act(() => button('卡组详情').click())
-    act(() => button('删除此卡组').click())
-    act(() => button('确认删除').click())
-    await until(() => ![...container.querySelectorAll('#deck-select option')].some((option) => (option as HTMLOptionElement).value === 'imported'))
-    expect(container.querySelector<HTMLSelectElement>('#deck-select')?.value).toBe('test-deck')
-    expect(await loadImportedDecks()).toEqual([])
-    act(() => button('卡组详情').click())
-    expect(container.textContent).not.toContain('删除此卡组')
+    expect(container.querySelector('#deck-select')).toBeNull()
+    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N5')
   })
 
   it('shows the home screen while the default deck is still loading', async () => {
@@ -140,20 +92,6 @@ describe('keyboard memory reviews', () => {
       await act(async () => release())
       await until(() => [...container.querySelectorAll('button')].some((element) => element.textContent?.includes('开始练习') && !element.disabled))
     } finally { deck.ready = Promise.resolve() }
-  })
-
-  it('keeps characters outside the BMP whole while typing', async () => {
-    await seedLegacyDeck({ schemaVersion: 2, id: 'rare', title: '生僻字', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-      items: [{ id: 'rare:1', text: '𠮟る', nativeText: '责备', ruby: [{ text: '𠮟', reading: 'しか' }, { text: 'る' }] }] })
-    await mount()
-    act(() => {
-      const element = container.querySelector<HTMLSelectElement>('#deck-select')!
-      element.value = 'rare'; element.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    await start(); type('𠮟')
-    const characters = [...container.querySelectorAll('.sentence .character')]
-    expect(characters.map((node) => node.textContent)).toEqual(['𠮟', 'る'])
-    expect(characters.map((node) => node.className)).toEqual(['character character--correct', 'character character--pending'])
   })
 
   it('offers no in-app import and points to the author instead', async () => {

@@ -4,10 +4,10 @@ import { DeckLoading, DeckPicker } from './components/DeckPicker'
 import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
+import { TargetSentence } from './components/TargetSentence'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
-import { DECKS_UPDATED_KEY, deleteImportedDeck, loadImportedDecks } from './lib/deck-storage'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
   addHistoryEntry,
@@ -23,7 +23,6 @@ import {
 } from './lib/storage'
 import { GRADES, GRADE_LABELS, ratingIntervals, studyPlan, type PracticeMode, type ReviewEntry, type SentenceProgress } from './lib/scheduler'
 import type { Grade } from 'ts-fsrs'
-import type { CloudChanges } from './lib/cloud-types'
 import type {
   HistoryEntry,
   Lesson,
@@ -32,7 +31,6 @@ import type {
 } from './types'
 
 const SESSION_SIZE = 10
-const SELECTED_DECK_KEY = 'typelingo.selected-deck.v1'
 const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
@@ -54,23 +52,10 @@ function App() {
 
 function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson: Lesson | null; deckError: string; onRetryDeck: () => void }) {
   const { session, syncing, status, sync, setPracticing } = useAccount()
-  const [importedDecks, setImportedDecks] = useState<Lesson[]>([])
-  const [decksLoaded, setDecksLoaded] = useState(false)
-  const [selectedId, setSelectedId] = useState(() => {
-    return preference(SELECTED_DECK_KEY, DEFAULT_DECK_ID)
-  })
-  const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(selectedId), 'all'))
-  const [libraryError, setLibraryError] = useState('')
-  const lessons = useMemo(() => {
-    const byId = new Map<string, Lesson>(defaultLesson ? [[defaultLesson.id, defaultLesson]] : [])
-    for (const deck of importedDecks) byId.set(deck.id, deck.id === DEFAULT_DECK_ID
-      ? { ...deck, metadata: { ...deck.metadata!, builtIn: true } } : deck)
-    return [...byId.values()]
-  }, [importedDecks, defaultLesson])
+  const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(DEFAULT_DECK_ID), 'all'))
   const [sessionLesson, setSessionLesson] = useState<Lesson | null>(null)
-  const lesson: Lesson | null = sessionLesson ?? lessons.find((deck) => deck.id === selectedId) ?? defaultLesson
-  const savedLevel = !lesson || lesson.id === selectedId ? selectedLevel : preference(deckLevelKey(lesson.id), 'all')
-  const level = lesson?.items.some((item) => item.level === savedLevel) ? savedLevel : 'all'
+  const lesson: Lesson | null = sessionLesson ?? defaultLesson
+  const level = lesson?.items.some((item) => item.level === selectedLevel) ? selectedLevel : 'all'
   const [screen, setScreen] = useState<Screen>('home')
   const [queue, setQueue] = useState<LessonItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -114,7 +99,7 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
   const skippedCount = useMemo(() => lesson ? lesson.items.filter((item) => skippedIds.has(item.id)).length : 0, [lesson, skippedIds])
   const plan = useMemo(() => studyPlan(availableItems, lesson?.id ?? '', cards, dailyNewLimit, new Date(clockNow)),
     [availableItems, lesson?.id, cards, dailyNewLimit, clockNow])
-  const canStart = !!lesson && progressReady && decksLoaded && !saving && !syncing && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
+  const canStart = !!lesson && progressReady && !saving && !syncing && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
   const currentProgress = currentItem && lesson ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
   const intervals = completedAt !== null && mode === 'memory' ? ratingIntervals(currentProgress, new Date(completedAt)) : []
 
@@ -164,14 +149,10 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
     void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
   }
   useEffect(() => {
-    function applied(event: Event) {
-      // A sync says what it changed; other senders (merging guest records) reload everything.
-      const changed = (event as CustomEvent<CloudChanges | undefined>).detail
+    // Learning records arrived from the cloud, or guest records and settings were merged into the account.
+    function applied() {
       void refreshProgress()
-      if (!changed || changed.decks) void loadImportedDecks().then(setImportedDecks).catch(() => setLibraryError('读取同步卡组失败，请刷新重试。'))
-      if (changed && !changed.settings) return
-      const id = preference(SELECTED_DECK_KEY, DEFAULT_DECK_ID)
-      setSelectedId(id); setSelectedLevel(preference(deckLevelKey(id), 'all'))
+      setSelectedLevel(preference(deckLevelKey(DEFAULT_DECK_ID), 'all'))
       setMode(preference('typelingo.mode', 'memory') === 'free' ? 'free' : 'memory')
       const limit = Number(preference('typelingo.daily-new', '10'))
       setDailyNewLimit(Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 10)
@@ -179,35 +160,6 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
     window.addEventListener(CLOUD_APPLIED, applied)
     return () => window.removeEventListener(CLOUD_APPLIED, applied)
   }, [refreshProgress])
-
-  useEffect(() => {
-    let active = true
-    function refresh() {
-      void loadImportedDecks().then((decks) => {
-        if (active) { setImportedDecks(decks); setLibraryError(''); setDecksLoaded(true) }
-      }).catch((error) => {
-        if (active) { setLibraryError(error instanceof Error ? error.message : '读取卡组失败。'); setDecksLoaded(true) }
-      })
-    }
-    function handleStorage(event: StorageEvent) {
-      if (event.storageArea === window.localStorage && (event.key === DECKS_UPDATED_KEY || event.key === null)) refresh()
-    }
-    refresh()
-    window.addEventListener('storage', handleStorage)
-    return () => { active = false; window.removeEventListener('storage', handleStorage) }
-  }, [])
-
-  function selectDeck(id: string) {
-    setSelectedId(id)
-    setSelectedLevel(preference(deckLevelKey(id), 'all'))
-    persistPreference(SELECTED_DECK_KEY, id)
-  }
-
-  async function removeDeck(id: string) {
-    await deleteImportedDeck(id)
-    setImportedDecks((current) => current.filter((deck) => deck.id !== id))
-    if (selectedId === id) selectDeck(DEFAULT_DECK_ID)
-  }
 
   function selectLevel(value: string) {
     if (!lesson) return
@@ -222,7 +174,7 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
   }, [currentIndex, screen])
 
   async function startPractice() {
-    if (!lesson || !progressReady || !decksLoaded || savingRef.current || syncing) return
+    if (!lesson || !progressReady || savingRef.current || syncing) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const [latestCards, latestSkipped] = await Promise.all([loadCards(), loadPermanentlySkippedSentenceIds()])
@@ -399,7 +351,6 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
 
       <main className="main-content">
         {progressError && <p role="alert" className="error-message">{progressError} {screen === 'home' && <button type="button" className="text-button" onClick={() => void refreshProgress()}>重试读取</button>}</p>}
-        {screen === 'home' && libraryError && <p role="alert" className="error-message">{libraryError} 默认卡组仍可练习。</p>}
         {screen === 'home' && (
           <HomeScreen
             history={history}
@@ -407,7 +358,7 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
             historyPage={historyPage}
             onHistoryPage={setHistoryPage}
             canStart={canStart}
-            startLabel={!lesson ? (deckError ? '例句库加载失败' : '正在加载例句库…') : !progressReady || !decksLoaded || saving || syncing ? '正在读取进度…'
+            startLabel={!lesson ? (deckError ? '例句库加载失败' : '正在加载例句库…') : !progressReady || saving || syncing ? '正在读取进度…'
               : canStart ? '开始练习' : '暂时没有待练句子'}
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
@@ -426,7 +377,7 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
                 {lesson && progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
             </div>}
-            deckPicker={lesson ? <DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onDelete={lesson.id === DEFAULT_DECK_ID ? undefined : removeDeck} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />
+            deckPicker={lesson ? <DeckPicker lesson={lesson} level={level} onLevel={selectLevel} disabled={saving || syncing} />
               : <DeckLoading error={deckError} onRetry={onRetryDeck} />}
           />
         )}
@@ -466,11 +417,7 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
                   </button>
                 </div>
                 <p className="sentence" lang="ja" aria-label={currentItem.text}>
-                  <JapaneseSentence
-                    item={currentItem}
-                    typed={typed}
-                    showFurigana={showFurigana}
-                  />
+                  <TargetSentence item={currentItem} typed={typed} showReadings={showFurigana} />
                 </p>
               </div>
 
@@ -560,55 +507,6 @@ function PracticeApp({ defaultLesson, deckError, onRetryDeck }: { defaultLesson:
       </footer>
     </div>
   )
-}
-
-interface JapaneseSentenceProps {
-  item: LessonItem
-  typed: string
-  showFurigana: boolean
-}
-
-function JapaneseSentence({ item, typed, showFurigana }: JapaneseSentenceProps) {
-  // Compare by code point so characters outside the BMP (e.g. 𠮟) are never split in two.
-  const entered = Array.from(typed)
-  let offset = 0
-
-  return item.ruby.map((part, partIndex) => {
-    const characters = Array.from(part.text)
-    const startIndex = offset
-    offset += characters.length
-    const base = characters.map((character, characterIndex) => {
-      const index = startIndex + characterIndex
-      const enteredCharacter = entered[index]
-      const state =
-        enteredCharacter === undefined
-          ? 'pending'
-          : enteredCharacter === character
-            ? 'correct'
-            : 'incorrect'
-
-      return (
-        <span className={`character character--${state}`} key={index}>
-          {character}
-        </span>
-      )
-    })
-
-    if (showFurigana && part.reading) {
-      return (
-        <ruby className="ruby-group" key={partIndex}>
-          {base}
-          <rt>{part.reading}</rt>
-        </ruby>
-      )
-    }
-
-    return (
-      <span className="ruby-group" key={partIndex}>
-        {base}
-      </span>
-    )
-  })
 }
 
 interface HomeScreenProps {

@@ -1,9 +1,8 @@
 import { getAccountScope } from './account-scope'
 import { loadSettings, storeSetting } from './storage'
 
-export const isPreference = (key: string) => ['typelingo.mode', 'typelingo.daily-new', 'typelingo.selected-deck.v1'].includes(key) || key.startsWith('typelingo.deck-level.v1:')
-// Synced by older versions (the retired companion feature); accepted from the cloud and ignored.
-export const isRetiredPreference = (key: string) => key === 'qiaoqiao.companion.v1'
+// Settings stay on each device (accounts keep a copy in their local database); they are not synced.
+export const isPreference = (key: string) => ['typelingo.mode', 'typelingo.daily-new'].includes(key) || key.startsWith('typelingo.deck-level.v1:')
 const cacheKey = (key: string) => getAccountScope() ? `qiaoqiao.account.${getAccountScope()}:${key}` : key
 const memory = new Map<string, string>()
 export function preference(key: string, fallback: string): string {
