@@ -6,19 +6,17 @@ interface Props {
   lessons: Lesson[]
   lesson: Lesson
   onSelect: (id: string) => void
-  onImport: () => void
   level: string
   onLevel: (level: string) => void
   disabled?: boolean
 }
 
-export function DeckPicker({ lessons, lesson, onSelect, onImport, level, onLevel, disabled = false }: Props) {
+export function DeckPicker({ lessons, lesson, onSelect, level, onLevel, disabled = false }: Props) {
   const [details, setDetails] = useState(false)
   return (
     <div className="deck-panel">
       <div className="deck-panel-heading">
         <span className="eyebrow">我的卡组</span>
-        <button className="text-button" type="button" disabled={disabled} onClick={onImport}>＋ 添加 Anki 卡组</button>
       </div>
       <label className="field-label" htmlFor="deck-select">选择卡组</label>
       <select id="deck-select" disabled={disabled} value={lesson.id} onChange={(event) => onSelect(event.target.value)}>
@@ -35,6 +33,7 @@ export function DeckPicker({ lessons, lesson, onSelect, onImport, level, onLevel
           .map((value) => <option key={value} value={value}>{value}</option>)}
       </select>
       <div className="deck-example"><p lang="ja">天気がいいから、散歩しましょう</p><span>天气很好，我们去散步吧</span></div>
+      <p className="deck-note">如果想使用自己的 Anki 卡组，请联系作者。</p>
       {details && <DeckDetails lesson={lesson} onClose={() => setDetails(false)} />}
     </div>
   )

@@ -827,12 +827,11 @@ input:focus-visible {
   background: var(--paper);
   color: var(--ink);
 }
-.deck-modal textarea { resize: vertical; }
 .deck-summary { margin-top: 10px; color: var(--muted); font-size: 12px; }
 .deck-example { margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--line); }
 .deck-example p { margin: 0 0 8px; font-family: "Yu Mincho", "Noto Serif JP", serif; font-size: 24px; line-height: 1.65; color: var(--green); }
 .deck-example > span { color: var(--muted); font-size: 13px; }
-.deck-credit { margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
+.deck-note { margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .history-deck { display: block; margin-top: 6px; font-size: 11px; }
 
 .deck-modal {
@@ -864,26 +863,11 @@ input:focus-visible {
 .deck-modal a { color: var(--green); text-underline-offset: 3px; }
 .license-panel { margin-top: 26px; padding: 20px; border: 1px solid #c7dcd0; border-radius: 12px; background: #f0f6f1; font-size: 13px; line-height: 1.85; }
 .license-panel h3,
-.conversion-note h3,
-.import-examples h3 { margin: 0 0 12px; font-size: 15px; }
+.conversion-note h3 { margin: 0 0 12px; font-size: 15px; }
 .license-panel ol { padding-left: 22px; margin-bottom: 0; }
 .license-panel li + li { margin-top: 8px; }
 .conversion-note { margin-top: 24px; font-size: 12px; line-height: 1.8; color: var(--muted); }
-.file-picker { display: block; padding: 25px; border: 1px dashed #b6c8bb; border-radius: 12px; background: #f0f6f1; color: var(--green); font-size: 15px; }
-.file-picker input { display: block; max-width: 100%; margin-top: 14px; font-size: 13px; }
-.import-status { margin: 18px 0; color: var(--green); font-size: 13px; overflow-wrap: anywhere; }
 .error-message { padding: 12px 16px; border-radius: 8px; background: var(--red-light); color: #96372d; font-size: 13px; line-height: 1.7; }
-.mapping-options { margin: 24px 0; font-size: 12px; color: var(--muted); }
-.mapping-options summary { cursor: pointer; color: var(--ink); font-weight: 650; }
-.mapping-options fieldset { margin: 20px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
-.mapping-options legend { overflow-wrap: anywhere; max-width: 100%; }
-.mapping-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 10px 0; }
-.mapping-row select { font-size: 12px; }
-.import-examples { margin-top: 24px; }
-.import-examples article { padding: 14px 0; border-bottom: 1px solid var(--line); }
-.import-examples p { margin: 8px 0; font-size: 21px; line-height: 2.2; }
-.import-examples rt { font-size: 0.48em; color: var(--muted); }
-.import-examples article > span { font-size: 13px; color: var(--muted); }
 .modal-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
 @media (max-width: 780px) {
@@ -895,5 +879,4 @@ input:focus-visible {
   .deck-stats { grid-template-columns: repeat(2, 1fr); }
   .deck-detail-title { font-size: 24px; }
   .detail-facts > div { grid-template-columns: 1fr; gap: 0; }
-  .mapping-row { grid-template-columns: 1fr; gap: 12px; }
 }

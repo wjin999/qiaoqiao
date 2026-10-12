@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
-import { saveImportedDeck } from './lib/deck-storage'
+import type { Lesson } from './types'
 
 vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
   schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
@@ -46,6 +46,19 @@ async function start() {
   await until(() => !!container.querySelector('#typing-input'))
 }
 const input = () => container.querySelector<HTMLInputElement>('#typing-input')!
+// Decks imported by earlier versions stay in this guest database.
+async function seedLegacyDeck(lesson: Lesson) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('typelingo.decks.v1', 1)
+    request.onupgradeneeded = () => request.result.createObjectStore('decks', { keyPath: 'id' })
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+  })
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('decks', 'readwrite'); tx.objectStore('decks').put(lesson)
+    tx.oncomplete = resolve; tx.onabort = reject
+  })
+  db.close()
+}
 function type(value: string) {
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input(), value)
@@ -69,7 +82,7 @@ describe('keyboard memory reviews', () => {
     expect(saved).not.toHaveProperty('petId')
   })
   it('restores the selected imported deck and each deck’s own level after reopening', async () => {
-    await saveImportedDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+    await seedLegacyDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
       items: [{ id: 'imported:1', text: '猫', nativeText: '猫', level: 'N3', ruby: [{ text: '猫' }] }] })
     await mount()
     function select(id: string, value: string) {
@@ -92,6 +105,12 @@ describe('keyboard memory reviews', () => {
     expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N3')
     await start()
     expect(container.querySelector('.sentence')?.getAttribute('aria-label')).toBe('猫')
+  })
+
+  it('offers no in-app import and points to the author instead', async () => {
+    await mount()
+    expect(container.textContent).not.toContain('添加 Anki 卡组')
+    expect(container.querySelector('.deck-note')?.textContent).toBe('如果想使用自己的 Anki 卡组，请联系作者。')
   })
 
   it('toggles furigana with Tab before and after completion without stealing IME or Shift+Tab', async () => {

@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadDefaultDeck } from './lib/default-deck'
 import { DeckPicker } from './components/DeckPicker'
-import { AnkiImport } from './components/AnkiImport'
 import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
-import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
+import { DECKS_UPDATED_KEY, loadImportedDecks } from './lib/deck-storage'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
   addHistoryEntry,
@@ -63,7 +62,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     return preference(SELECTED_DECK_KEY, defaultLesson.id)
   })
   const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(selectedId), 'all'))
-  const [importOpen, setImportOpen] = useState(false)
   const [libraryError, setLibraryError] = useState('')
   const lessons = useMemo(() => {
     const byId = new Map([[defaultLesson.id, defaultLesson]])
@@ -148,7 +146,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [refreshProgress])
 
   useEffect(() => {
-    const busy = screen === 'practice' || saving || importOpen
+    const busy = screen === 'practice' || saving
     setPracticing(busy)
     // The final review must commit before syncing.
     // Mark the attempt first so rerenders and failed requests never loop.
@@ -157,7 +155,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       autoSyncedRoundRef.current = roundIdRef.current
       void sync()
     }
-  }, [screen, saving, importOpen, syncing, session, sync, setPracticing])
+  }, [screen, saving, syncing, session, sync, setPracticing])
   function persistPreference(key: string, value: string) {
     void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
   }
@@ -201,13 +199,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   function selectLevel(value: string) {
     setSelectedLevel(value)
     persistPreference(deckLevelKey(lesson.id), value)
-  }
-
-  async function importDeck(deck: Lesson) {
-    await saveImportedDeck(deck)
-    setImportedDecks((current) => [...current.filter((item) => item.id !== deck.id), deck])
-    setLibraryError('')
-    selectDeck(deck.id)
   }
 
   useEffect(() => {
@@ -388,7 +379,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
           </span>
           <span>日语敲敲</span>
         </button>
-        <AccountButton disabled={screen === 'practice' || saving || importOpen} />
+        <AccountButton disabled={screen === 'practice' || saving} />
       </header>
 
       <main className="main-content">
@@ -419,7 +410,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 {progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
             </div>}
-            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
+            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
           />
         )}
 
@@ -546,8 +537,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
           />
         )}
       </main>
-
-      {importOpen && <AnkiImport onClose={() => setImportOpen(false)} onSave={importDeck} />}
 
       <footer className="site-footer">
         {session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5

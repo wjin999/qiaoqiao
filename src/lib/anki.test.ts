@@ -16,7 +16,7 @@ function collection(modern = false) {
   const fields = ['日语例句', '中文翻译', '注音']
   if (modern) {
     db.run('CREATE TABLE notetypes (id INTEGER, name TEXT); CREATE TABLE fields (ntid INTEGER, ord INTEGER, name TEXT); CREATE TABLE decks (id INTEGER, name TEXT);')
-    db.run("INSERT INTO notetypes VALUES (1, '日语学习'); INSERT INTO decks VALUES (10, '日语::N5'); INSERT INTO col VALUES ('{}', '{}');")
+    db.run("INSERT INTO notetypes VALUES (1, '日语学习'); INSERT INTO decks VALUES (10, '日语::N5'); INSERT INTO col VALUES ('', '');")
     fields.forEach((name, index) => db.run('INSERT INTO fields VALUES (1, ?, ?)', [index, name]))
   } else {
     db.run('INSERT INTO col VALUES (?, ?)', [
