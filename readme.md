@@ -31,6 +31,10 @@ npm run dev
 
 默认卡组由 **[egg rolls](https://github.com/5mdld/anki-jlpt-decks)** 制作，采用 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/deed.zh-hans) 许可。本项目提取文本、整理注音并去重，改变了数据格式与呈现方式。卡组内容限非商业使用，完整署名和修改说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
+## 许可
+
+代码采用 [MIT 许可](LICENSE)。内置卡组数据不适用 MIT，仍按上文 CC BY-NC 4.0 限非商业使用。
+
 
 
 --------
