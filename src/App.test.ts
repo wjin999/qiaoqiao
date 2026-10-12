@@ -5,14 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
-import { saveImportedDeck } from './lib/deck-storage'
 
-vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
-  schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-  items: Array.from({ length: 12 }, (_, index) => ({ id: `sentence-${index}`, sourceNoteId: `note-${index}`,
-    text: index === 0 ? '猫1234。' : `猫${index}。`, nativeText: '猫', level: 'N5',
-    ruby: [{ text: '猫', reading: 'ねこ' }, { text: index === 0 ? '1234。' : `${index}。` }] })),
-}) }))
+const deck = vi.hoisted(() => ({ ready: Promise.resolve() as Promise<void> }))
+vi.mock('./lib/decks', () => ({ DECK_IDS: { ja: 'test-deck', en: 'test-english' }, loadDeck: async (language: 'ja' | 'en') => {
+  await deck.ready
+  if (language === 'en') return { schemaVersion: 2, id: 'test-english', title: '英文测试', nativeLanguage: 'zh-CN', targetLanguage: 'en',
+    items: [['I like tea.', '我喜欢茶。'], ['See you soon!', '回头见！'], ['Open the door.', '开门。']].map(([text, nativeText], index) => (
+      { id: `test-english:${index + 1}`, text, nativeText, ruby: [{ text }] })) }
+  return { schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+    items: Array.from({ length: 12 }, (_, index) => ({ id: `sentence-${index}`, sourceNoteId: `note-${index}`,
+      text: index === 0 ? '猫1234。' : `猫${index}。`, nativeText: '猫', level: 'N5',
+      ruby: [{ text: '猫', reading: 'ねこ' }, { text: index === 0 ? '1234。' : `${index}。` }] })) }
+} }))
 
 let container: HTMLDivElement
 let root: Root
@@ -57,56 +61,80 @@ function key(key: string, options: KeyboardEventInit = {}) {
 }
 
 describe('keyboard memory reviews', () => {
-  it('remembers the chosen companion and gives growth only after a completed sentence is saved', async () => {
+  it('saves a sentence only after it is completed and rated', async () => {
     await mount()
-    act(() => button('点点').click())
-    await until(() => button('点点').getAttribute('aria-pressed') === 'true')
-    act(() => root.unmount()); root = createRoot(container); await mount()
-    expect(button('点点').getAttribute('aria-pressed')).toBe('true')
+    expect(container.textContent).not.toContain('成长')
     await start(); type('猫1234。')
     expect((await exportProgress()).reviews).toHaveLength(0)
-    expect(container.textContent).not.toContain('成长 +1')
     key('1')
     await until(() => container.querySelector('.progress-count')?.textContent === '2 / 10')
-    expect((await exportProgress()).reviews[0]?.petId).toBe('tuxedo')
-    act(() => button('日语敲敲').click())
-    await until(() => !!container.querySelector('.companion-choices') && button('点点').textContent!.includes('1 成长'))
-    expect(button('麦麦').textContent).toContain('0 成长')
-    act(() => {
-      const toggle = [...container.querySelectorAll('label')].find((label) => label.textContent?.includes('练习时显示伙伴'))!.querySelector('input')!
-      toggle.click()
-    })
-    await until(() => !button('点点').disabled)
-    await start()
-    expect(container.querySelector('.practice-companion')).toBeNull()
-    type(container.querySelector('.sentence')!.getAttribute('aria-label')!); key('4')
-    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 9')
-    expect((await exportProgress()).reviews.filter((entry) => entry.petId === 'tuxedo')).toHaveLength(2)
+    const [saved] = (await exportProgress()).reviews
+    expect(saved).toMatchObject({ mode: 'memory', rating: 1, sentenceId: 'sentence-0' })
+    expect(saved).not.toHaveProperty('petId')
   })
-  it('restores the selected imported deck and each deck’s own level after reopening', async () => {
-    await saveImportedDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-      items: [{ id: 'imported:1', text: '猫', nativeText: '猫', level: 'N3', ruby: [{ text: '猫' }] }] })
+  it('remembers the practice range after reopening', async () => {
     await mount()
-    function select(id: string, value: string) {
-      act(() => {
-        const element = container.querySelector<HTMLSelectElement>(`#${id}`)!
-        element.value = value; element.dispatchEvent(new Event('change', { bubbles: true }))
-      })
-    }
-    select('level-select', 'N5')
-    select('deck-select', 'imported')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('all')
-    select('level-select', 'N3')
-    select('deck-select', 'test-deck')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N5')
-    select('deck-select', 'imported')
+    act(() => {
+      const element = container.querySelector<HTMLSelectElement>('#level-select')!
+      element.value = 'N5'; element.dispatchEvent(new Event('change', { bubbles: true }))
+    })
     act(() => root.unmount())
     root = createRoot(container)
     await mount()
-    expect(container.querySelector<HTMLSelectElement>('#deck-select')?.value).toBe('imported')
-    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N3')
+    expect(container.querySelector('#deck-select')).toBeNull()
+    expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N5')
+  })
+
+  it('shows the home screen while the default deck is still loading', async () => {
+    let release!: () => void
+    deck.ready = new Promise<void>((resolve) => { release = resolve })
+    try {
+      await act(async () => root.render(createElement(StrictMode, null, createElement(App))))
+      await until(() => container.textContent?.includes('共 0 轮') ?? false)
+      expect(button('正在加载例句库').disabled).toBe(true)
+      expect(container.textContent).toContain('正在加载 egg rolls 例句库')
+      await act(async () => release())
+      await until(() => [...container.querySelectorAll('button')].some((element) => element.textContent?.includes('开始练习') && !element.disabled))
+    } finally { deck.ready = Promise.resolve() }
+  })
+
+  it('practises English with the same layout: Chinese, then English, then the input', async () => {
+    await mount()
+    act(() => button('英语').click())
+    await until(() => container.querySelector('.deck-title')?.textContent === '英文测试')
+    expect(container.querySelector('h1')?.textContent).toBe('打字，记住英语。')
+    expect(container.querySelector('#level-select')).toBeNull()
     await start()
-    expect(container.querySelector('.sentence')?.getAttribute('aria-label')).toBe('猫')
+    expect([...container.querySelectorAll('.typing-card > .practice-line')].map((line) => line.classList[1])).toEqual(['native-line', 'target-line', 'input-line'])
+    expect(container.querySelector('.native-sentence')?.textContent).toBe('我喜欢茶。')
+    expect(container.querySelector('.sentence')?.getAttribute('lang')).toBe('en')
+    expect(input().getAttribute('lang')).toBe('en')
+    expect(container.querySelector('.furigana-toggle')).toBeNull()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    act(() => { input().dispatchEvent(tab) })
+    expect(tab.defaultPrevented).toBe(false)
+    type('I like tea.')
+    expect(input().readOnly).toBe(true)
+    key('3')
+    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 3')
+    expect((await exportProgress()).reviews[0]).toMatchObject({ lessonId: 'test-english', sentenceId: 'test-english:1', rating: 3, hintUsed: false })
+  })
+
+  it('remembers the chosen language after reopening', async () => {
+    await mount()
+    act(() => button('英语').click())
+    await until(() => button('英语').getAttribute('aria-pressed') === 'true')
+    act(() => root.unmount())
+    root = createRoot(container)
+    await mount()
+    expect(button('英语').getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector('.deck-title')?.textContent).toBe('英文测试')
+  })
+
+  it('offers no in-app import and points to the author instead', async () => {
+    await mount()
+    expect(container.textContent).not.toContain('添加 Anki 卡组')
+    expect(container.querySelector('.deck-note')?.textContent).toBe('如果想使用自己的 Anki 卡组，请联系作者。')
   })
 
   it('toggles furigana with Tab before and after completion without stealing IME or Shift+Tab', async () => {
@@ -192,6 +220,8 @@ describe('keyboard memory reviews', () => {
   })
 
   it('finishes a full round once and stops introducing new cards after the daily limit', async () => {
+    const persist = vi.fn(async () => true)
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { persisted: async () => false, persist } })
     await mount(); await start()
     for (let index = 0; index < 10; index++) {
       type(container.querySelector('.sentence')!.getAttribute('aria-label')!)
@@ -208,6 +238,9 @@ describe('keyboard memory reviews', () => {
     act(() => button('回到主页').click())
     expect(container.textContent).toContain('今日已学新句 10 句')
     expect(button('暂时没有待练句子').disabled).toBe(true)
+    // Once a round is finished, ask the browser to keep the records.
+    expect(persist).toHaveBeenCalledTimes(1)
+    delete (navigator as { storage?: unknown }).storage
   })
 
   it('updates and pages long-term history after another tab saves', async () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
-import { addHistoryEntry, clearPermanentlySkippedSentences, exportProgress, historyCount,
-  loadHistory, loadPermanentlySkippedSentenceIds, permanentlySkipSentence, recordReview, HISTORY_KEY, PERMANENTLY_SKIPPED_KEY } from './storage'
+import { addHistoryEntry, clearPermanentlySkippedSentences, exportProgress, historyCount, loadHistory, loadPermanentlySkippedSentenceIds,
+  pendingChanges, permanentlySkipSentence, recordReview, HISTORY_KEY, PERMANENTLY_SKIPPED_KEY } from './storage'
 import type { HistoryEntry, LessonItem } from '../types'
 import type { ReviewEntry } from './scheduler'
 
@@ -76,6 +76,32 @@ describe('durable learning records', () => {
     const data = await exportProgress()
     expect(data.cards).toEqual([])
     expect(data.reviews).toHaveLength(1)
+  })
+
+  it('never queues guest changes and drops the queue older versions left behind', async () => {
+    // Version 2 of the database queued guest changes that were never uploaded.
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('typelingo.progress', 2)
+      request.onupgradeneeded = () => {
+        for (const name of ['history', 'cards', 'reviews', 'skips', 'meta', 'outbox', 'settings', 'decks', 'seeds']) request.result.createObjectStore(name, { keyPath: 'id' })
+      }
+      request.onsuccess = () => {
+        const tx = request.result.transaction('outbox', 'readwrite')
+        tx.objectStore('outbox').put({ id: 'stale', kind: 'review', key: 'stale', value: {}, mutationId: 'stale' })
+        tx.oncomplete = () => { request.result.close(); resolve() }
+        tx.onabort = () => reject(tx.error)
+      }
+    })
+    await recordReview(review, item, history)
+    await permanentlySkipSentence([], 'sentence')
+    expect(await pendingChanges(null)).toEqual([])
+    expect((await exportProgress()).reviews).toEqual([review])
+  })
+
+  it('opens the database once for many reads and writes', async () => {
+    const open = vi.spyOn(indexedDB, 'open')
+    await loadHistory(); await recordReview(review, item, history); await exportProgress(); await historyCount()
+    expect(open).toHaveBeenCalledTimes(1)
   })
 
   it('restores one deck without removing another deck or resurrecting stale skips', async () => {

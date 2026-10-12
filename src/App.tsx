@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadDefaultDeck } from './lib/default-deck'
+import { DECK_IDS, loadDeck } from './lib/decks'
 import { DeckPicker } from './components/DeckPicker'
-import { AnkiImport } from './components/AnkiImport'
 import { ProgressBackup } from './components/ProgressBackup'
 import { AccountButton, useAccount } from './components/Account'
 import { ReviewDock } from './components/ReviewDock'
+import { TargetSentence } from './components/TargetSentence'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
-import { CompanionHome, PracticeCompanions, ResultCompanion } from './components/Companions'
-import { companionPreferences, equippedOutfit, petGrowth, PET_PREFERENCE_KEY, type CompanionPreferences } from './lib/companions'
-import { preference, savePreference } from './lib/preferences'
+import { LANGUAGE_KEY, preference, savePreference } from './lib/preferences'
+import { LANGUAGES } from './languages'
 import { CLOUD_APPLIED } from './lib/account-scope'
-import { DECKS_UPDATED_KEY, loadImportedDecks, saveImportedDeck } from './lib/deck-storage'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
   addHistoryEntry,
@@ -18,10 +16,10 @@ import {
   historyCount,
   loadCards,
   loadHistory,
-  loadActivityRecords,
   loadPermanentlySkippedSentenceIds,
   PROGRESS_UPDATED_KEY,
   recordReview,
+  requestPersistentStorage,
   permanentlySkipSentence,
 } from './lib/storage'
 import { GRADES, GRADE_LABELS, ratingIntervals, studyPlan, type PracticeMode, type ReviewEntry, type SentenceProgress } from './lib/scheduler'
@@ -31,53 +29,29 @@ import type {
   Lesson,
   LessonItem,
   PracticeSummary,
+  TargetLanguage,
 } from './types'
 
 const SESSION_SIZE = 10
-const SELECTED_DECK_KEY = 'typelingo.selected-deck.v1'
 const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
+const readLanguage = (): TargetLanguage => preference(LANGUAGE_KEY, 'ja') === 'en' ? 'en' : 'ja'
 
 function App() {
-  const [defaultLesson, setDefaultLesson] = useState<Lesson | null>(null)
-  const [error, setError] = useState('')
-  const [attempt, setAttempt] = useState(0)
-  useEffect(() => {
-    let active = true
-    setError('')
-    void loadDefaultDeck().then((deck) => { if (active) setDefaultLesson(deck) })
-      .catch(() => { if (active) setError('默认卡组加载失败，请检查连接后重试。') })
-    return () => { active = false }
-  }, [attempt])
-  if (!defaultLesson) return <div className="app-shell"><main className="main-content loading-screen">
-    <span className="eyebrow">日语敲敲</span><h1>打字，记住日语。</h1>
-    <p role={error ? 'alert' : 'status'}>{error || '正在加载 egg rolls 例句库…'}</p>
-    {error && <button className="primary-button" type="button" onClick={() => setAttempt((current) => current + 1)}>重试</button>}
-  </main></div>
-  return <PracticeApp defaultLesson={defaultLesson} />
-}
-
-function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const { session, syncing, status, sync, setPracticing } = useAccount()
-  const [importedDecks, setImportedDecks] = useState<Lesson[]>([])
-  const [decksLoaded, setDecksLoaded] = useState(false)
-  const [selectedId, setSelectedId] = useState(() => {
-    return preference(SELECTED_DECK_KEY, defaultLesson.id)
-  })
-  const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(selectedId), 'all'))
-  const [importOpen, setImportOpen] = useState(false)
-  const [libraryError, setLibraryError] = useState('')
-  const lessons = useMemo(() => {
-    const byId = new Map([[defaultLesson.id, defaultLesson]])
-    for (const deck of importedDecks) byId.set(deck.id, deck.id === defaultLesson.id
-      ? { ...deck, metadata: { ...deck.metadata!, builtIn: true } } : deck)
-    return [...byId.values()]
-  }, [importedDecks, defaultLesson])
+  const [language, setLanguage] = useState<TargetLanguage>(readLanguage)
+  // Decks load in the background (the Japanese one is 5 MB); history, backups and the account work meanwhile.
+  const [decks, setDecks] = useState<Partial<Record<TargetLanguage, Lesson>>>({})
+  const [deckError, setDeckError] = useState('')
+  const [deckAttempt, setDeckAttempt] = useState(0)
+  const [selectedLevel, setSelectedLevel] = useState(() => preference(deckLevelKey(DECK_IDS[readLanguage()]), 'all'))
   const [sessionLesson, setSessionLesson] = useState<Lesson | null>(null)
-  const lesson = sessionLesson ?? lessons.find((deck) => deck.id === selectedId) ?? defaultLesson
-  const savedLevel = lesson.id === selectedId ? selectedLevel : preference(deckLevelKey(lesson.id), 'all')
-  const level = lesson.items.some((item) => item.level === savedLevel) ? savedLevel : 'all'
+  const lesson: Lesson | null = sessionLesson ?? decks[language] ?? null
+  const level = lesson?.items.some((item) => item.level === selectedLevel) ? selectedLevel : 'all'
+  // During a round this follows the round's deck, otherwise the chosen language.
+  const practiceLanguage = lesson?.targetLanguage ?? language
+  const copy = LANGUAGES[practiceLanguage]
   const [screen, setScreen] = useState<Screen>('home')
   const [queue, setQueue] = useState<LessonItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -90,10 +64,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const [historyPage, setHistoryPage] = useState(0)
   const [permanentlySkippedIds, setPermanentlySkippedIds] = useState<string[]>([])
   const [cards, setCards] = useState<SentenceProgress[]>([])
-  const [reviews, setReviews] = useState<ReviewEntry[]>([])
-  const [companion, setCompanion] = useState(() => companionPreferences(preference(PET_PREFERENCE_KEY, '')))
-  const [companionBusy, setCompanionBusy] = useState(false)
-  const growth = useMemo(() => petGrowth(reviews), [reviews])
   const [progressReady, setProgressReady] = useState(false)
   const [progressError, setProgressError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -111,6 +81,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const roundIdRef = useRef('')
   const autoSyncedRoundRef = useRef('')
   const sentenceStartedRef = useRef(0)
+  const persistenceRequestedRef = useRef(false)
   const hintUsedRef = useRef(false)
   const sessionCardsRef = useRef<SentenceProgress[]>([])
   const refreshVersionRef = useRef(0)
@@ -118,25 +89,24 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   const currentItem = queue[currentIndex]
   const isSentenceComplete = completedAt !== null
   const skippedIds = useMemo(() => new Set(permanentlySkippedIds), [permanentlySkippedIds])
-  const availableItems = useMemo(() => lesson.items.filter(
+  const availableItems = useMemo(() => lesson ? lesson.items.filter(
     (item) => !skippedIds.has(item.id) && (level === 'all' || item.level === level),
-  ), [lesson, skippedIds, level])
-  const skippedCount = useMemo(() => lesson.items.filter((item) => skippedIds.has(item.id)).length, [lesson, skippedIds])
-  const plan = useMemo(() => studyPlan(availableItems, lesson.id, cards, dailyNewLimit, new Date(clockNow)),
-    [availableItems, lesson.id, cards, dailyNewLimit, clockNow])
-  const canStart = progressReady && decksLoaded && !saving && !syncing && !companionBusy && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
-  const currentProgress = currentItem ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
+  ) : [], [lesson, skippedIds, level])
+  const skippedCount = useMemo(() => lesson ? lesson.items.filter((item) => skippedIds.has(item.id)).length : 0, [lesson, skippedIds])
+  const plan = useMemo(() => studyPlan(availableItems, lesson?.id ?? '', cards, dailyNewLimit, new Date(clockNow)),
+    [availableItems, lesson?.id, cards, dailyNewLimit, clockNow])
+  const canStart = !!lesson && progressReady && !saving && !syncing && (mode === 'free' ? availableItems.length > 0 : plan.queue.length > 0)
+  const currentProgress = currentItem && lesson ? sessionCardsRef.current.find((entry) => entry.lessonId === lesson.id && entry.sentenceId === currentItem.id) : undefined
   const intervals = completedAt !== null && mode === 'memory' ? ratingIntervals(currentProgress, new Date(completedAt)) : []
 
   const refreshProgress = useCallback(async () => {
     const version = ++refreshVersionRef.current
     try {
-      const [recent, total, skipped, progress, activity] = await Promise.all([
-        loadHistory(5, historyPage * 5), historyCount(), loadPermanentlySkippedSentenceIds(), loadCards(), loadActivityRecords(),
+      const [recent, total, skipped, progress] = await Promise.all([
+        loadHistory(5, historyPage * 5), historyCount(), loadPermanentlySkippedSentenceIds(), loadCards(),
       ])
       if (version !== refreshVersionRef.current) return
       setHistory(recent); setHistoryTotal(total); setPermanentlySkippedIds(skipped); setCards(progress)
-      setReviews(activity.reviews)
       setProgressReady(true); setProgressError(''); setClockNow(Date.now())
     } catch (error) {
       if (version === refreshVersionRef.current) setProgressError(error instanceof Error ? error.message : '读取学习记录失败。')
@@ -156,74 +126,57 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [refreshProgress])
 
   useEffect(() => {
-    const busy = screen === 'practice' || saving || importOpen || companionBusy
+    const busy = screen === 'practice' || saving
     setPracticing(busy)
-    // The final review (including pet growth) must commit before syncing.
+    // The final review must commit before syncing.
     // Mark the attempt first so rerenders and failed requests never loop.
     if (screen === 'result' && !busy && !syncing && session && roundIdRef.current
       && autoSyncedRoundRef.current !== roundIdRef.current) {
       autoSyncedRoundRef.current = roundIdRef.current
       void sync()
     }
-  }, [screen, saving, importOpen, companionBusy, syncing, session, sync, setPracticing])
-  async function changeCompanion(next: CompanionPreferences) {
-    if (companionBusy || syncing) return false
-    setCompanionBusy(true)
-    try { await savePreference(PET_PREFERENCE_KEY, JSON.stringify(next)); setCompanion(next); return true }
-    catch { setProgressError('伙伴设置未能保存，请检查浏览器存储后重试。'); return false }
-    finally { setCompanionBusy(false) }
-  }
+  }, [screen, saving, syncing, session, sync, setPracticing])
+  useEffect(() => {
+    if (decks[language]) return
+    let active = true
+    setDeckError('')
+    void loadDeck(language).then((deck) => { if (active) setDecks((current) => ({ ...current, [language]: deck })) })
+      .catch(() => { if (active) setDeckError('卡组加载失败，请检查连接后重试。') })
+    return () => { active = false }
+  }, [language, decks, deckAttempt])
+  useEffect(() => {
+    if (screen !== 'result' || persistenceRequestedRef.current) return
+    persistenceRequestedRef.current = true
+    void requestPersistentStorage()
+  }, [screen])
   function persistPreference(key: string, value: string) {
     void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
   }
   useEffect(() => {
+    // Learning records arrived from the cloud, or guest records and settings were merged into the account.
     function applied() {
       void refreshProgress()
-      void loadImportedDecks().then(setImportedDecks).catch(() => setLibraryError('读取同步卡组失败，请刷新重试。'))
-      const id = preference(SELECTED_DECK_KEY, defaultLesson.id)
-      setSelectedId(id); setSelectedLevel(preference(deckLevelKey(id), 'all'))
+      const nextLanguage = readLanguage()
+      setLanguage(nextLanguage); setSelectedLevel(preference(deckLevelKey(DECK_IDS[nextLanguage]), 'all'))
       setMode(preference('typelingo.mode', 'memory') === 'free' ? 'free' : 'memory')
-      setCompanion(companionPreferences(preference(PET_PREFERENCE_KEY, '')))
       const limit = Number(preference('typelingo.daily-new', '10'))
       setDailyNewLimit(Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 10)
     }
     window.addEventListener(CLOUD_APPLIED, applied)
     return () => window.removeEventListener(CLOUD_APPLIED, applied)
-  }, [refreshProgress, defaultLesson.id])
+  }, [refreshProgress])
 
-  useEffect(() => {
-    let active = true
-    function refresh() {
-      void loadImportedDecks().then((decks) => {
-        if (active) { setImportedDecks(decks); setLibraryError(''); setDecksLoaded(true) }
-      }).catch((error) => {
-        if (active) { setLibraryError(error instanceof Error ? error.message : '读取卡组失败。'); setDecksLoaded(true) }
-      })
-    }
-    function handleStorage(event: StorageEvent) {
-      if (event.storageArea === window.localStorage && (event.key === DECKS_UPDATED_KEY || event.key === null)) refresh()
-    }
-    refresh()
-    window.addEventListener('storage', handleStorage)
-    return () => { active = false; window.removeEventListener('storage', handleStorage) }
-  }, [])
-
-  function selectDeck(id: string) {
-    setSelectedId(id)
-    setSelectedLevel(preference(deckLevelKey(id), 'all'))
-    persistPreference(SELECTED_DECK_KEY, id)
+  function chooseLanguage(next: TargetLanguage) {
+    if (next === language) return
+    setLanguage(next)
+    setSelectedLevel(preference(deckLevelKey(DECK_IDS[next]), 'all'))
+    persistPreference(LANGUAGE_KEY, next)
   }
 
   function selectLevel(value: string) {
+    if (!lesson) return
     setSelectedLevel(value)
     persistPreference(deckLevelKey(lesson.id), value)
-  }
-
-  async function importDeck(deck: Lesson) {
-    await saveImportedDeck(deck)
-    setImportedDecks((current) => [...current.filter((item) => item.id !== deck.id), deck])
-    setLibraryError('')
-    selectDeck(deck.id)
   }
 
   useEffect(() => {
@@ -233,7 +186,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }, [currentIndex, screen])
 
   async function startPractice() {
-    if (!progressReady || !decksLoaded || savingRef.current || syncing || companionBusy) return
+    if (!lesson || !progressReady || savingRef.current || syncing) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const [latestCards, latestSkipped] = await Promise.all([loadCards(), loadPermanentlySkippedSentenceIds()])
@@ -255,7 +208,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       setCompletedSentenceCount(0)
       setSummary(null)
       setShowFurigana(mode === 'free')
-      hintUsedRef.current = mode === 'free'
+      hintUsedRef.current = mode === 'free' && lesson.targetLanguage === 'ja'
       sentenceStartedRef.current = Date.now()
       isComposingRef.current = false
       setScreen('practice')
@@ -312,12 +265,12 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     setTyped('')
     setCompletedAt(null)
     setShowFurigana(mode === 'free')
-    hintUsedRef.current = mode === 'free'
+    hintUsedRef.current = mode === 'free' && practiceLanguage === 'ja'
     sentenceStartedRef.current = Date.now()
     isComposingRef.current = false
   }
 
-  function roundHistory(sentenceCount: number): HistoryEntry {
+  function roundHistory(lesson: Lesson, sentenceCount: number): HistoryEntry {
     return { id: roundIdRef.current, completedAt: new Date().toISOString(),
       lessonId: lesson.id, lessonTitle: lesson.title, sentenceCount,
       elapsedMs: Math.max(1, Date.now() - (startedAt ?? Date.now())), mode,
@@ -325,16 +278,15 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }
 
   async function submitSentence(grade: Grade | null) {
-    if (!currentItem || completedAt === null || isComposingRef.current || savingRef.current) return
+    if (!currentItem || !lesson || completedAt === null || isComposingRef.current || savingRef.current) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       const nextCount = completedSentenceCount + 1
       const review: ReviewEntry = { id: `${roundIdRef.current}:${currentIndex}`, lessonId: lesson.id,
         sentenceId: currentItem.id, reviewedAt: new Date(completedAt).toISOString(), mode, rating: grade,
-        hintUsed: hintUsedRef.current, elapsedMs: Math.max(0, completedAt - sentenceStartedRef.current), petId: companion.petId }
+        hintUsed: hintUsedRef.current, elapsedMs: Math.max(0, completedAt - sentenceStartedRef.current) }
       await recordReview(review,
-        currentItem, roundHistory(nextCount), currentProgress?.updatedAt)
-      setReviews((current) => current.some((entry) => entry.id === review.id) ? current : [...current, review])
+        currentItem, roundHistory(lesson, nextCount), currentProgress?.updatedAt)
       setCompletedSentenceCount(nextCount)
       advanceFromCurrent(nextCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
@@ -342,17 +294,18 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   }
 
   async function skipCurrentSentence(permanent: boolean) {
-    if (!currentItem || savingRef.current || isSentenceComplete) return
+    if (!currentItem || !lesson || savingRef.current || isSentenceComplete) return
     savingRef.current = true; setSaving(true); setProgressError('')
     try {
       if (permanent) setPermanentlySkippedIds(await permanentlySkipSentence(permanentlySkippedIds, currentItem.id))
-      if (currentIndex + 1 >= queue.length) await addHistoryEntry([], roundHistory(completedSentenceCount))
+      if (currentIndex + 1 >= queue.length) await addHistoryEntry([], roundHistory(lesson, completedSentenceCount))
       advanceFromCurrent(completedSentenceCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
     finally { savingRef.current = false; setSaving(false) }
   }
 
   async function restorePermanentlySkippedSentences() {
+    if (!lesson) return
     try { setPermanentlySkippedIds(await clearPermanentlySkippedSentences(lesson.items.map((item) => item.id))) }
     catch (error) { setProgressError(error instanceof Error ? error.message : '恢复失败。') }
   }
@@ -384,7 +337,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
       event.key === 'Process' ||
       event.keyCode === 229
 
-    if (event.key === 'Tab' && !isImeAction && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    if (practiceLanguage === 'ja' && event.key === 'Tab' && !isImeAction && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
       event.preventDefault()
       if (!event.repeat) toggleFurigana()
       return
@@ -405,12 +358,11 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
           </span>
           <span>日语敲敲</span>
         </button>
-        <AccountButton disabled={screen === 'practice' || saving || importOpen || companionBusy} />
+        <AccountButton disabled={screen === 'practice' || saving} />
       </header>
 
       <main className="main-content">
         {progressError && <p role="alert" className="error-message">{progressError} {screen === 'home' && <button type="button" className="text-button" onClick={() => void refreshProgress()}>重试读取</button>}</p>}
-        {screen === 'home' && libraryError && <p role="alert" className="error-message">{libraryError} 默认卡组仍可练习。</p>}
         {screen === 'home' && (
           <HomeScreen
             history={history}
@@ -418,31 +370,33 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             historyPage={historyPage}
             onHistoryPage={setHistoryPage}
             canStart={canStart}
-            loading={!progressReady || !decksLoaded || saving || syncing}
+            startLabel={!lesson ? (deckError ? '例句库加载失败' : '正在加载例句库…') : !progressReady || saving || syncing ? '正在读取进度…'
+              : canStart ? '开始练习' : '暂时没有待练句子'}
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
             progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
-            companionPanel={<CompanionHome preferences={companion} points={growth} ready={progressReady} disabled={saving || syncing || companionBusy} onChange={changeCompanion} />}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'free'} onClick={() => { setMode('free'); persistPreference('typelingo.mode', 'free') }}>自由跟打</button>
               </div>
               {mode === 'memory' ? <>
-                <p>先回忆读音，再跟打核对。完成后按 1–4 评分，安排下次复习。</p>
+                <p>{copy.memoryHint}</p>
                 <label className="daily-new-label">每天新句上限（当前卡组）<input aria-label="每天新句上限" type="number" min="0" max="100" value={dailyNewLimit}
                   disabled={syncing} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 100) { setDailyNewLimit(value); persistPreference('typelingo.daily-new', String(value)) } }} /></label>
                 <p aria-live="polite">到期 {plan.dueCount} 句 · 本轮新句 {plan.newCount} 句 · 今日已学新句 {plan.introducedToday} 句</p>
-                {progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
-              </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
+                {lesson && progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
+              </> : <p>{copy.freeHint}</p>}
             </div>}
-            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onImport={() => setImportOpen(true)} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
+            copy={copy}
+            deckPicker={<DeckPicker language={language} onLanguage={chooseLanguage} lesson={decks[language] ?? null} error={deckError}
+              onRetry={() => setDeckAttempt((current) => current + 1)} level={level} onLevel={selectLevel} disabled={saving || syncing} />}
           />
         )}
 
-        {screen === 'practice' && currentItem && (
-          <section className="practice-screen" aria-label="日语跟打练习">
+        {screen === 'practice' && currentItem && lesson && (
+          <section className="practice-screen" aria-label={`${copy.name}跟打练习`}>
             <div className="practice-meta">
               <span className="eyebrow">{lesson.title}{currentItem.level ? ` · ${currentItem.level}` : ''}</span>
               <span className="progress-count">
@@ -456,7 +410,6 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
               />
             </div>
 
-            <PracticeCompanions preferences={companion} points={growth} typed={typed} complete={isSentenceComplete} />
             <div className="typing-card">
               <div className="practice-line native-line">
                 <p className="native-sentence" lang="zh-CN">
@@ -464,8 +417,8 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 </p>
               </div>
 
-              <div className="practice-line japanese-line">
-                <div className="line-heading">
+              <div className="practice-line target-line">
+                {practiceLanguage === 'ja' && <div className="line-heading">
                   <button
                     className="furigana-toggle"
                     type="button"
@@ -475,13 +428,9 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                   >
                     汉字注音：{showFurigana ? '开' : '关'} · Tab
                   </button>
-                </div>
-                <p className="sentence" lang="ja" aria-label={currentItem.text}>
-                  <JapaneseSentence
-                    item={currentItem}
-                    typed={typed}
-                    showFurigana={showFurigana}
-                  />
+                </div>}
+                <p className="sentence" lang={practiceLanguage} aria-label={currentItem.text}>
+                  <TargetSentence item={currentItem} typed={typed} showReadings={showFurigana} />
                 </p>
               </div>
 
@@ -491,7 +440,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                   id="typing-input"
                   className={isSentenceComplete ? 'typing-input is-complete' : 'typing-input'}
                   type="text"
-                  lang="ja"
+                  lang={practiceLanguage}
                   value={typed}
                   readOnly={isSentenceComplete}
                   disabled={saving && !isSentenceComplete}
@@ -509,17 +458,15 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 />
 
                 <div className="typing-footer" id="typing-help">
-                  <span className="desktop-input-help">
-                    请使用日语输入法；Backspace 修正，Tab 切换注音，Shift+Tab 移动焦点。
-                  </span>
-                  <span className="mobile-input-help">使用日语输入法，完成后{mode === 'memory' ? '点击评分' : '进入下一句'}。</span>
+                  <span className="desktop-input-help">{copy.typingHelp}</span>
+                  <span className="mobile-input-help">{copy.typingHelpMobile}完成后{mode === 'memory' ? '点击评分' : '进入下一句'}。</span>
                   {isSentenceComplete && <strong className="ready-message is-visible">
                     {mode === 'memory' ? '输入已锁定，按 1–4 评价记忆' : '输入完成，按 Enter 继续'}
                   </strong>}
                 </div>
                 {mode === 'memory' && isSentenceComplete && <ReviewDock><div className="rating-panel" aria-label="评价这句的记忆">
-                  <p role="status"><span className="desktop-input-help">{saving ? '正在保存…' : '按看注音前的回忆评分：想不起来选「重来」，费力但想起来选「困难」。'}</span>
-                    <span className="mobile-input-help">{saving ? '正在保存…' : '按看注音前的回忆，选择评分'}</span></p>
+                  <p role="status"><span className="desktop-input-help">{saving ? '正在保存…' : copy.ratingHelp}</span>
+                    <span className="mobile-input-help">{saving ? '正在保存…' : copy.ratingHelpMobile}</span></p>
                   <div className="rating-options">
                     {GRADES.map((grade, index) => <button key={grade} className={`rating-button rating-${grade}`} type="button"
                       disabled={saving} onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault() }} onClick={() => void submitSentence(grade)} aria-keyshortcuts={String(grade)}>
@@ -559,15 +506,12 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
             summary={summary}
             syncStatus={session ? status : undefined}
             syncing={syncing}
-            companion={<ResultCompanion petId={companion.petId} points={growth[companion.petId]} gained={summary.sentenceCount} animate={companion.animations} outfit={equippedOutfit(companion, companion.petId, growth[companion.petId])} />}
             canRestart={canStart}
             onRestart={startPractice}
             onHome={() => { setSessionLesson(null); setScreen('home') }}
           />
         )}
       </main>
-
-      {importOpen && <AnkiImport onClose={() => setImportOpen(false)} onSave={importDeck} />}
 
       <footer className="site-footer">
         {session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
@@ -576,66 +520,20 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
   )
 }
 
-interface JapaneseSentenceProps {
-  item: LessonItem
-  typed: string
-  showFurigana: boolean
-}
-
-function JapaneseSentence({ item, typed, showFurigana }: JapaneseSentenceProps) {
-  let offset = 0
-
-  return item.ruby.map((part, partIndex) => {
-    const startIndex = offset
-    offset += part.text.length
-    const base = part.text.split('').map((character, characterIndex) => {
-      const index = startIndex + characterIndex
-      const enteredCharacter = typed[index]
-      const state =
-        enteredCharacter === undefined
-          ? 'pending'
-          : enteredCharacter === character
-            ? 'correct'
-            : 'incorrect'
-
-      return (
-        <span className={`character character--${state}`} key={index}>
-          {character}
-        </span>
-      )
-    })
-
-    if (showFurigana && part.reading) {
-      return (
-        <ruby className="ruby-group" key={partIndex}>
-          {base}
-          <rt>{part.reading}</rt>
-        </ruby>
-      )
-    }
-
-    return (
-      <span className="ruby-group" key={partIndex}>
-        {base}
-      </span>
-    )
-  })
-}
-
 interface HomeScreenProps {
   history: HistoryEntry[]
   historyTotal: number
   historyPage: number
   onHistoryPage: (page: number) => void
   canStart: boolean
-  loading: boolean
+  startLabel: string
   permanentlySkippedCount: number
   onStart: () => void
   onRestoreSkipped: () => void
   deckPicker: React.ReactNode
   progressBackup: React.ReactNode
   practiceOptions: React.ReactNode
-  companionPanel: React.ReactNode
+  copy: typeof LANGUAGES[TargetLanguage]
 }
 
 function HomeScreen({
@@ -644,26 +542,21 @@ function HomeScreen({
   historyPage,
   onHistoryPage,
   canStart,
-  loading,
+  startLabel,
   permanentlySkippedCount,
   onStart,
   onRestoreSkipped,
   deckPicker,
   progressBackup,
   practiceOptions,
-  companionPanel,
+  copy,
 }: HomeScreenProps) {
   return (
     <>
       <section className="hero" aria-labelledby="home-title">
         <div className="hero-copy">
-          <h1 id="home-title">
-            打字，记住日语。
-          </h1>
-          <p>
-            以假名输入联结汉字、读音与语义，沿助词与句型梳理表达结构。<br />
-            让每次敲击，都成为有语境的日语练习。
-          </p>
+          <h1 id="home-title">{copy.title}</h1>
+          <p>{copy.intro[0]}<br />{copy.intro[1]}</p>
           {practiceOptions}
           <button
             className="primary-button"
@@ -671,7 +564,7 @@ function HomeScreen({
             onClick={onStart}
             disabled={!canStart}
           >
-            {loading ? '正在读取进度…' : canStart ? '开始练习' : '暂时没有待练句子'}
+            {startLabel}
             <span aria-hidden="true">→</span>
           </button>
           {permanentlySkippedCount > 0 && (
@@ -687,8 +580,6 @@ function HomeScreen({
 
         {deckPicker}
       </section>
-
-      {companionPanel}
 
       <section className="history-section" aria-labelledby="history-title">
         <div className="section-heading">
@@ -739,21 +630,19 @@ interface ResultScreenProps {
   summary: PracticeSummary
   syncStatus?: string
   syncing: boolean
-  companion: React.ReactNode
   canRestart: boolean
   onRestart: () => void
   onHome: () => void
 }
 
-function ResultScreen({ summary, syncStatus, syncing, companion, canRestart, onRestart, onHome }: ResultScreenProps) {
+function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
-      {companion}
       <span className="eyebrow">本轮完成</span>
       <h1 id="result-title">练习完成</h1>
       {syncStatus !== undefined && <p className="backup-help" role="status">{syncStatus || '本轮已保存，准备同步…'}</p>}
       <p className="result-subtitle">
-        {syncing ? '正在同步本轮进度与宠物成长，完成后可继续练习。' : !canRestart
+        {syncing ? '正在同步本轮进度，完成后可继续练习。' : !canRestart
           ? '当前范围暂时没有待练句子，可回到主页查看复习安排或自由跟打。'
           : summary.sentenceCount > 0
             ? `完成 ${summary.sentenceCount} 个句子，继续保持这份节奏。`

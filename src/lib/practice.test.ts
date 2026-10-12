@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import lessonData from '../data/egg-rolls.json'
+import englishData from '../data/english-sample.json'
+import { DECK_IDS } from './decks'
 import type { Lesson, LessonItem } from '../types'
 import { formatDuration, sampleItems } from './practice'
 
@@ -38,7 +40,7 @@ describe('sampleItems', () => {
 
 describe('Japanese lesson data', () => {
   it('ships the attributed egg rolls library with unique source ids', () => {
-    expect(japaneseLesson.id).toBe('eggrolls-jlpt-v3.5')
+    expect(japaneseLesson.id).toBe(DECK_IDS.ja)
     expect(japaneseLesson.items).toHaveLength(15891)
     expect(new Set(japaneseLesson.items.map((item) => item.id)).size).toBe(15891)
     expect(japaneseLesson.metadata).toMatchObject({ author: 'egg rolls', license: 'CC BY-NC 4.0', noteCount: 10635, builtIn: true })
@@ -47,6 +49,20 @@ describe('Japanese lesson data', () => {
     for (const item of japaneseLesson.items) {
       expect(item.ruby.map((part) => part.text).join('')).toBe(item.text)
       expect(item.nativeText.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('English sample deck', () => {
+  const english = englishData as Lesson
+  it('is the English deck, with unique ids and a Chinese line for every sentence', () => {
+    expect(english).toMatchObject({ id: DECK_IDS.en, targetLanguage: 'en', nativeLanguage: 'zh-CN' })
+    expect(new Set(english.items.map((item) => item.id)).size).toBe(english.items.length)
+    for (const item of english.items) {
+      expect(item.ruby).toEqual([{ text: item.text }])
+      expect(item.nativeText.length).toBeGreaterThan(0)
+      // Plain ASCII, so every sentence can be typed on any keyboard layout.
+      expect(item.text).toMatch(/^[\x20-\x7e]+$/)
     }
   })
 })

@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 2,
+  "id": "english-sample-v1",
+  "title": "英文示例句（试用）",
+  "nativeLanguage": "zh-CN",
+  "targetLanguage": "en",
+  "items": [
+    {
+      "id": "english-sample-v1:1",
+      "text": "Good morning. Did you sleep well?",
+      "nativeText": "早上好，昨晚睡得好吗？",
+      "ruby": [
+        {
+          "text": "Good morning. Did you sleep well?"
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:2",
+      "text": "Could you say that again a little more slowly?",
+      "nativeText": "你能再说一遍，说慢一点吗？",
+      "ruby": [
+        {
+          "text": "Could you say that again a little more slowly?"
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:3",
+      "text": "I'm looking for the train station.",
+      "nativeText": "我在找火车站。",
+      "ruby": [
+        {
+          "text": "I'm looking for the train station."
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:4",
+      "text": "How much does this one cost?",
+      "nativeText": "这个多少钱？",
+      "ruby": [
+        {
+          "text": "How much does this one cost?"
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:5",
+      "text": "The weather is nice, so let's take a walk.",
+      "nativeText": "天气很好，我们去散步吧。",
+      "ruby": [
+        {
+          "text": "The weather is nice, so let's take a walk."
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:6",
+      "text": "I usually have coffee in the morning.",
+      "nativeText": "我早上通常喝咖啡。",
+      "ruby": [
+        {
+          "text": "I usually have coffee in the morning."
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:7",
+      "text": "Let me know when you are free.",
+      "nativeText": "你有空的时候告诉我。",
+      "ruby": [
+        {
+          "text": "Let me know when you are free."
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:8",
+      "text": "Thank you for helping me yesterday.",
+      "nativeText": "谢谢你昨天帮了我。",
+      "ruby": [
+        {
+          "text": "Thank you for helping me yesterday."
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:9",
+      "text": "What do you like to do on weekends?",
+      "nativeText": "你周末喜欢做什么？",
+      "ruby": [
+        {
+          "text": "What do you like to do on weekends?"
+        }
+      ]
+    },
+    {
+      "id": "english-sample-v1:10",
+      "text": "I have been learning English for two years.",
+      "nativeText": "我学英语已经两年了。",
+      "ruby": [
+        {
+          "text": "I have been learning English for two years."
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "description": "用于试用英文模式的 10 个日常短句，由本项目编写。正式英文卡组将由作者后续提供。",
+    "author": "日语敲敲",
+    "version": "示例 v1",
+    "license": "随本项目代码采用 MIT 许可",
+    "noteCount": 10,
+    "cardCount": 10,
+    "relatedCount": 0,
+    "duplicateCount": 0,
+    "missingCount": 0,
+    "unalignedReadingCount": 0,
+    "builtIn": true
+  }
+}

@@ -1,6 +1,5 @@
 import { exportProgress, mergeProgress, validHistoryEntry, type ProgressData } from './storage'
 import { sentenceKey, type ReviewEntry, type SentenceProgress } from './scheduler'
-import { isPetId } from './companions'
 export type { ProgressData } from './storage'
 
 // This is an import memory safeguard, not a limit on stored learning history.
@@ -31,9 +30,9 @@ export function validCard(value: unknown): value is SentenceProgress {
 export function validReview(value: unknown): value is ReviewEntry {
   if (!value || typeof value !== 'object') return false
   const entry = value as ReviewEntry
+  // Records from the retired companion feature may carry a petId; it is ignored.
   return validId(entry.id) && validId(entry.lessonId) && validId(entry.sentenceId)
     && validDate(entry.reviewedAt) && nonnegative(entry.elapsedMs) && typeof entry.hintUsed === 'boolean'
-    && (entry.petId === undefined || isPetId(entry.petId))
     && ((entry.mode === 'free' && entry.rating === null)
       || (entry.mode === 'memory' && entry.rating !== null && [1, 2, 3, 4].includes(entry.rating)))
 }

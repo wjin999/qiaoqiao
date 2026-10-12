@@ -13,12 +13,14 @@ export interface RubyPart {
   reading?: string
 }
 
+export type TargetLanguage = 'ja' | 'en'
+
 export interface Lesson {
   schemaVersion: 2
   id: string
   title: string
   nativeLanguage: 'zh-CN'
-  targetLanguage: 'ja'
+  targetLanguage: TargetLanguage
   items: LessonItem[]
   metadata?: DeckMetadata
 }

@@ -1,3 +1,4 @@
+// Offline converter for scripts/import-default-deck.mjs; the website no longer imports Anki files.
 import { unzipSync } from 'fflate'
 import { Decompress } from 'fzstd'
 import type { Database, SqlJsStatic } from 'sql.js'
@@ -79,8 +80,9 @@ export async function readApkg(bytes: Uint8Array, fileName: string, SQL: SqlJsSt
     const tables = new Set(rows(db, "SELECT name FROM sqlite_master WHERE type='table'").map((row) => row.name))
     if (!tables.has('notes') || !tables.has('cards')) throw new Error('缺少笔记或卡片数据。')
     const col = tables.has('col') ? rows(db, 'SELECT models, decks FROM col')[0] : undefined
-    const oldModels = JSON.parse(String(col?.models ?? '{}')) as Record<string, { name: string; flds: { name: string; ord: number }[] }>
-    const oldDecks = JSON.parse(String(col?.decks ?? '{}')) as Record<string, { name: string; desc?: string }>
+    // Collections at schema 15+ (every non-legacy export) store '' here and use the notetypes/decks tables.
+    const oldModels = JSON.parse(String(col?.models || '{}')) as Record<string, { name: string; flds: { name: string; ord: number }[] }>
+    const oldDecks = JSON.parse(String(col?.decks || '{}')) as Record<string, { name: string; desc?: string }>
     const models: AnkiModel[] = tables.has('notetypes')
       ? rows(db, 'SELECT id, name FROM notetypes').map((model) => ({
         id: String(model.id), name: String(model.name), noteCount: 0,
