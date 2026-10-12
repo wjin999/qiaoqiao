@@ -450,6 +450,10 @@ input:focus-visible {
   line-height: 1.85;
 }
 
+.sentence:lang(en) {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
 .ruby-group {
   ruby-position: over;
 }
@@ -735,7 +739,7 @@ input:focus-visible {
 }
 
 .native-line { padding-block: 24px 20px; }
-.japanese-line { padding-top: 16px; }
+.target-line { padding-top: 16px; }
 
 .mobile-input-help { display: none; }
 .free-next-panel { text-align: right; }
@@ -769,7 +773,7 @@ input:focus-visible {
   .practice-screen { padding-top: 22px; }
   .progress-track { margin-bottom: 20px; }
   .practice-line, .native-line { padding: 16px 20px; }
-  .japanese-line { padding-top: 12px; }
+  .target-line { padding-top: 12px; }
   .sentence { min-height: 48px; margin-top: 8px; font-size: 30px; line-height: 1.8; }
   .typing-input { padding-block: 10px; font-size: 23px; }
   .typing-footer { margin-top: 12px; gap: 8px; }
@@ -831,7 +835,9 @@ input:focus-visible {
 .deck-summary { margin-top: 10px; color: var(--muted); font-size: 12px; }
 .deck-example { margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--line); }
 .deck-example p { margin: 0 0 8px; font-family: "Yu Mincho", "Noto Serif JP", serif; font-size: 24px; line-height: 1.65; color: var(--green); }
+.deck-example p:lang(en) { font-family: Georgia, "Times New Roman", serif; font-size: 21px; }
 .deck-example > span { color: var(--muted); font-size: 13px; }
+.language-switch { margin: 6px 0 22px; }
 .deck-note { margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .history-deck { display: block; margin-top: 6px; font-size: 11px; }
 

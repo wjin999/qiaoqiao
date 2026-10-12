@@ -1,4 +1,5 @@
 import type { Lesson } from '../types'
+import { LANGUAGES } from '../languages'
 import { Modal } from './Modal'
 
 function safeLink(value?: string): string | undefined {
@@ -11,23 +12,24 @@ export function DeckDetails({ lesson, onClose }: { lesson: Lesson; onClose: () =
   const source = safeLink(metadata?.sourceUrl)
   const licenseUrl = safeLink(metadata?.licenseUrl)
   const readings = lesson.items.filter((item) => item.ruby.some((part) => part.reading)).length
+  const levels = ['N5', 'N4', 'N3', 'N2', 'N1'].map((level) => [level, lesson.items.filter((item) => item.level === level).length] as const)
+    .filter(([, count]) => count > 0)
   return (
     <Modal title="卡组详情" onClose={onClose}>
-      <span className="eyebrow">{metadata?.builtIn ? '默认卡组' : '我的导入'}</span>
+      <span className="eyebrow">内置卡组 · {LANGUAGES[lesson.targetLanguage].name}</span>
       <h3 className="deck-detail-title">{lesson.title}</h3>
-      <p className="detail-description">{metadata?.description || '日语跟打练习卡组。'}</p>
+      <p className="detail-description">{metadata?.description || `${LANGUAGES[lesson.targetLanguage].name}跟打练习卡组。`}</p>
       <dl className="deck-stats">
         <div><dt>可练习例句 / 短语</dt><dd>{lesson.items.length.toLocaleString('zh-CN')}</dd></div>
-        <div><dt>附有假名注音</dt><dd>{readings.toLocaleString('zh-CN')}</dd></div>
-        <div><dt>原卡组词条</dt><dd>{metadata?.noteCount.toLocaleString('zh-CN') ?? '—'}</dd></div>
-        <div><dt>原卡组卡片</dt><dd>{metadata?.cardCount.toLocaleString('zh-CN') ?? '—'}</dd></div>
+        {lesson.targetLanguage === 'ja' && <div><dt>附有假名注音</dt><dd>{readings.toLocaleString('zh-CN')}</dd></div>}
+        {metadata?.sourceFile && <>
+          <div><dt>原卡组词条</dt><dd>{metadata.noteCount.toLocaleString('zh-CN')}</dd></div>
+          <div><dt>原卡组卡片</dt><dd>{metadata.cardCount.toLocaleString('zh-CN')}</dd></div>
+        </>}
       </dl>
-      <div className="level-breakdown">
-        {['N5', 'N4', 'N3', 'N2', 'N1'].map((level) => {
-          const count = lesson.items.filter((item) => item.level === level).length
-          return count > 0 && <span key={level}>{level}<strong>{count.toLocaleString('zh-CN')}</strong></span>
-        })}
-      </div>
+      {levels.length > 0 && <div className="level-breakdown">
+        {levels.map(([level, count]) => <span key={level}>{level}<strong>{count.toLocaleString('zh-CN')}</strong></span>)}
+      </div>}
       <dl className="detail-facts">
         <div><dt>作者</dt><dd>{metadata?.author || '卡组未提供'}</dd></div>
         {metadata?.version && <div><dt>版本</dt><dd>{metadata.version}</dd></div>}

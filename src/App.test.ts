@@ -7,12 +7,16 @@ import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
 
 const deck = vi.hoisted(() => ({ ready: Promise.resolve() as Promise<void> }))
-vi.mock('./lib/default-deck', () => ({ DEFAULT_DECK_ID: 'test-deck', loadDefaultDeck: async () => { await deck.ready; return {
-  schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
-  items: Array.from({ length: 12 }, (_, index) => ({ id: `sentence-${index}`, sourceNoteId: `note-${index}`,
-    text: index === 0 ? '猫1234。' : `猫${index}。`, nativeText: '猫', level: 'N5',
-    ruby: [{ text: '猫', reading: 'ねこ' }, { text: index === 0 ? '1234。' : `${index}。` }] })),
-} } }))
+vi.mock('./lib/decks', () => ({ DECK_IDS: { ja: 'test-deck', en: 'test-english' }, loadDeck: async (language: 'ja' | 'en') => {
+  await deck.ready
+  if (language === 'en') return { schemaVersion: 2, id: 'test-english', title: '英文测试', nativeLanguage: 'zh-CN', targetLanguage: 'en',
+    items: [['I like tea.', '我喜欢茶。'], ['See you soon!', '回头见！'], ['Open the door.', '开门。']].map(([text, nativeText], index) => (
+      { id: `test-english:${index + 1}`, text, nativeText, ruby: [{ text }] })) }
+  return { schemaVersion: 2, id: 'test-deck', title: '测试卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+    items: Array.from({ length: 12 }, (_, index) => ({ id: `sentence-${index}`, sourceNoteId: `note-${index}`,
+      text: index === 0 ? '猫1234。' : `猫${index}。`, nativeText: '猫', level: 'N5',
+      ruby: [{ text: '猫', reading: 'ねこ' }, { text: index === 0 ? '1234。' : `${index}。` }] })) }
+} }))
 
 let container: HTMLDivElement
 let root: Root
@@ -92,6 +96,39 @@ describe('keyboard memory reviews', () => {
       await act(async () => release())
       await until(() => [...container.querySelectorAll('button')].some((element) => element.textContent?.includes('开始练习') && !element.disabled))
     } finally { deck.ready = Promise.resolve() }
+  })
+
+  it('practises English with the same layout: Chinese, then English, then the input', async () => {
+    await mount()
+    act(() => button('英语').click())
+    await until(() => container.querySelector('.deck-title')?.textContent === '英文测试')
+    expect(container.querySelector('h1')?.textContent).toBe('打字，记住英语。')
+    expect(container.querySelector('#level-select')).toBeNull()
+    await start()
+    expect([...container.querySelectorAll('.typing-card > .practice-line')].map((line) => line.classList[1])).toEqual(['native-line', 'target-line', 'input-line'])
+    expect(container.querySelector('.native-sentence')?.textContent).toBe('我喜欢茶。')
+    expect(container.querySelector('.sentence')?.getAttribute('lang')).toBe('en')
+    expect(input().getAttribute('lang')).toBe('en')
+    expect(container.querySelector('.furigana-toggle')).toBeNull()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    act(() => { input().dispatchEvent(tab) })
+    expect(tab.defaultPrevented).toBe(false)
+    type('I like tea.')
+    expect(input().readOnly).toBe(true)
+    key('3')
+    await until(() => container.querySelector('.progress-count')?.textContent === '2 / 3')
+    expect((await exportProgress()).reviews[0]).toMatchObject({ lessonId: 'test-english', sentenceId: 'test-english:1', rating: 3, hintUsed: false })
+  })
+
+  it('remembers the chosen language after reopening', async () => {
+    await mount()
+    act(() => button('英语').click())
+    await until(() => button('英语').getAttribute('aria-pressed') === 'true')
+    act(() => root.unmount())
+    root = createRoot(container)
+    await mount()
+    expect(button('英语').getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector('.deck-title')?.textContent).toBe('英文测试')
   })
 
   it('offers no in-app import and points to the author instead', async () => {
