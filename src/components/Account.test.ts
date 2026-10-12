@@ -19,7 +19,7 @@ vi.mock('../lib/supabase', () => ({
   } },
   authRedirect: () => 'https://example.com/', accountError: () => '操作失败，请重试。',
 }))
-vi.mock('../lib/cloud-sync', () => ({ syncAccount: mock.sync, cloudTransport: () => ({}) }))
+vi.mock('../lib/cloud-sync', () => ({ syncAccount: mock.sync, cloudTransport: () => ({}), syncNotice: () => '' }))
 let container: HTMLDivElement, root: Root
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -28,6 +28,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.open = false }
   mock.login.mockResolvedValue({ error: null }); mock.signup.mockResolvedValue({ data: { session: null }, error: null })
   mock.reset.mockResolvedValue({ error: null }); mock.update.mockResolvedValue({ error: null })
+  mock.sync.mockResolvedValue({ changed: { progress: false, settings: false, decks: false }, retry: 0, rejected: 0, quarantined: 0, reasons: [] })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); setAccountScope(null) })

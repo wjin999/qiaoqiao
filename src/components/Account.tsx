@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { Session } from '@supabase/supabase-js'
 import { accountError, authRedirect, supabase } from '../lib/supabase'
 import { CLOUD_APPLIED, getAccountScope, LOCAL_CHANGED, setAccountScope } from '../lib/account-scope'
-import { cloudTransport, syncAccount } from '../lib/cloud-sync'
-import { exportProgress, mergeProgress, pendingChanges, storeDeck, storeSetting } from '../lib/storage'
+import { cloudTransport, syncAccount, syncNotice } from '../lib/cloud-sync'
+import { deckFitsCloud, exportProgress, mergeProgress, pendingChanges, storeDeck, storeSetting } from '../lib/storage'
 import { guestPreferences, hydratePreferences } from '../lib/preferences'
 import { loadImportedDecks } from '../lib/deck-storage'
 import { Modal } from './Modal'
@@ -52,12 +52,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!navigator.onLine) { setStatus('离线 · 记录已保存在本机，联网后可点击同步'); return }
     running.current = true; setSyncing(true); setStatus('正在同步…')
     try {
-      await syncAccount(current.user.id, cloudTransport(current.access_token))
+      const report = await syncAccount(current.user.id, cloudTransport(current.access_token))
       if (currentSession.current?.user.id !== current.user.id) return
       await hydratePreferences(current.user.id)
-      window.dispatchEvent(new Event(CLOUD_APPLIED))
+      window.dispatchEvent(new CustomEvent(CLOUD_APPLIED, { detail: report.changed }))
+      // Changes the server asked to retry later stay queued; anything beyond them is new.
       const pending = await pendingChanges(current.user.id)
-      setStatus(pending.length ? '有新记录待同步' : `已同步 · ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`)
+      setStatus(pending.length > report.retry ? '有新记录待同步'
+        : `已同步 · ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${syncNotice(report)}`)
     } catch (error) {
       if (currentSession.current?.user.id === current.user.id) setStatus(`同步未完成：${accountError(error)} 记录保留在本机，可点击同步重试。`)
     } finally { running.current = false; setSyncing(false) }
@@ -142,10 +144,13 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
     try {
       const [progress, decks] = await Promise.all([exportProgress(null), loadImportedDecks(null)])
       await mergeProgress(progress, account)
-      for (const deck of decks) await storeDeck(deck, account)
+      const tooLarge = decks.filter((deck) => !deckFitsCloud(deck))
+      for (const deck of decks) if (deckFitsCloud(deck)) await storeDeck(deck, account)
       for (const [key, value] of Object.entries(guestPreferences())) await storeSetting(key, value, account)
       await hydratePreferences(account); window.dispatchEvent(new Event(CLOUD_APPLIED))
-      setMergeConfirm(false); setMessage('本机游客记录已合并，游客原记录仍保留。点击同步即可保存到云端。')
+      setMergeConfirm(false)
+      setMessage('本机游客记录已合并，游客原记录仍保留。点击同步即可保存到云端。'
+        + (tooLarge.length ? `卡组「${tooLarge.map((deck) => deck.title).join('」「')}」超过 10 MB 的云同步上限，仍只在游客模式中可用。` : ''))
     } catch (error) { setError(accountError(error)) }
     finally { setBusy(false) }
   }
@@ -190,7 +195,7 @@ export function AccountButton({ disabled = false }: { disabled?: boolean }) {
             {action === 'login' && <><button type="button" className="text-button" onClick={() => choose('signup')}>注册新账号</button><button type="button" className="text-button" onClick={() => choose('forgot')}>忘记密码</button></>}
           </div>}
         </form>}
-        <p className="backup-help">注册后，邮箱及同步数据将由 Supabase 托管。卡组仅本人可访问，不上传原始 APKG 或媒体。你仍可不登录使用。</p>
+        <p className="backup-help">注册后，邮箱及同步数据将由 Supabase 托管。同步数据仅本人可访问。你仍可不登录使用。</p>
         {message && <p role="status">{message}</p>}{error && <p className="error-message" role="alert">{error}</p>}
       </div>}
     </Modal>}

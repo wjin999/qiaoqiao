@@ -7,7 +7,7 @@ import { ReviewDock } from './components/ReviewDock'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { preference, savePreference } from './lib/preferences'
 import { CLOUD_APPLIED } from './lib/account-scope'
-import { DECKS_UPDATED_KEY, loadImportedDecks } from './lib/deck-storage'
+import { DECKS_UPDATED_KEY, deleteImportedDeck, loadImportedDecks } from './lib/deck-storage'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
   addHistoryEntry,
@@ -22,6 +22,7 @@ import {
 } from './lib/storage'
 import { GRADES, GRADE_LABELS, ratingIntervals, studyPlan, type PracticeMode, type ReviewEntry, type SentenceProgress } from './lib/scheduler'
 import type { Grade } from 'ts-fsrs'
+import type { CloudChanges } from './lib/cloud-types'
 import type {
   HistoryEntry,
   Lesson,
@@ -160,9 +161,12 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     void savePreference(key, value).catch(() => setProgressError('设置未能保存，请检查浏览器存储后重试。'))
   }
   useEffect(() => {
-    function applied() {
+    function applied(event: Event) {
+      // A sync says what it changed; other senders (merging guest records) reload everything.
+      const changed = (event as CustomEvent<CloudChanges | undefined>).detail
       void refreshProgress()
-      void loadImportedDecks().then(setImportedDecks).catch(() => setLibraryError('读取同步卡组失败，请刷新重试。'))
+      if (!changed || changed.decks) void loadImportedDecks().then(setImportedDecks).catch(() => setLibraryError('读取同步卡组失败，请刷新重试。'))
+      if (changed && !changed.settings) return
       const id = preference(SELECTED_DECK_KEY, defaultLesson.id)
       setSelectedId(id); setSelectedLevel(preference(deckLevelKey(id), 'all'))
       setMode(preference('typelingo.mode', 'memory') === 'free' ? 'free' : 'memory')
@@ -194,6 +198,12 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
     setSelectedId(id)
     setSelectedLevel(preference(deckLevelKey(id), 'all'))
     persistPreference(SELECTED_DECK_KEY, id)
+  }
+
+  async function removeDeck(id: string) {
+    await deleteImportedDeck(id)
+    setImportedDecks((current) => current.filter((deck) => deck.id !== id))
+    if (selectedId === id) selectDeck(defaultLesson.id)
   }
 
   function selectLevel(value: string) {
@@ -410,7 +420,7 @@ function PracticeApp({ defaultLesson }: { defaultLesson: Lesson }) {
                 {progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>随机选句，默认显示注音；完成后按 Enter 继续，不改变记忆复习计划。</p>}
             </div>}
-            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
+            deckPicker={<DeckPicker lessons={lessons} lesson={lesson} onSelect={selectDeck} onDelete={lesson.id === defaultLesson.id ? undefined : removeDeck} level={level} onLevel={selectLevel} disabled={!decksLoaded || saving || syncing} />}
           />
         )}
 

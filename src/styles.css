@@ -868,7 +868,9 @@ input:focus-visible {
 .license-panel li + li { margin-top: 8px; }
 .conversion-note { margin-top: 24px; font-size: 12px; line-height: 1.8; color: var(--muted); }
 .error-message { padding: 12px 16px; border-radius: 8px; background: var(--red-light); color: #96372d; font-size: 13px; line-height: 1.7; }
-.modal-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.deck-danger { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.8; }
+.primary-button.danger-primary { border-color: var(--red); background: var(--red); }
 
 @media (max-width: 780px) {
   .deck-panel { margin-top: 24px; }

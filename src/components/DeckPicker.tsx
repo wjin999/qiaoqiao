@@ -6,12 +6,13 @@ interface Props {
   lessons: Lesson[]
   lesson: Lesson
   onSelect: (id: string) => void
+  onDelete?: (id: string) => Promise<void>
   level: string
   onLevel: (level: string) => void
   disabled?: boolean
 }
 
-export function DeckPicker({ lessons, lesson, onSelect, level, onLevel, disabled = false }: Props) {
+export function DeckPicker({ lessons, lesson, onSelect, onDelete, level, onLevel, disabled = false }: Props) {
   const [details, setDetails] = useState(false)
   return (
     <div className="deck-panel">
@@ -34,7 +35,7 @@ export function DeckPicker({ lessons, lesson, onSelect, level, onLevel, disabled
       </select>
       <div className="deck-example"><p lang="ja">天気がいいから、散歩しましょう</p><span>天气很好，我们去散步吧</span></div>
       <p className="deck-note">如果想使用自己的 Anki 卡组，请联系作者。</p>
-      {details && <DeckDetails lesson={lesson} onClose={() => setDetails(false)} />}
+      {details && <DeckDetails lesson={lesson} onClose={() => setDetails(false)} onDelete={onDelete && !disabled ? () => onDelete(lesson.id) : undefined} />}
     </div>
   )
 }

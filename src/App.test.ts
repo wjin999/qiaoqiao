@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
+import { loadImportedDecks } from './lib/deck-storage'
 import type { Lesson } from './types'
 
 vi.mock('./lib/default-deck', () => ({ loadDefaultDeck: async () => ({
@@ -105,6 +106,26 @@ describe('keyboard memory reviews', () => {
     expect(container.querySelector<HTMLSelectElement>('#level-select')?.value).toBe('N3')
     await start()
     expect(container.querySelector('.sentence')?.getAttribute('aria-label')).toBe('猫')
+  })
+
+  it('deletes a previously imported deck and falls back to the default deck', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.open = true }
+    HTMLDialogElement.prototype.close = function () { this.open = false }
+    await seedLegacyDeck({ schemaVersion: 2, id: 'imported', title: '导入卡组', nativeLanguage: 'zh-CN', targetLanguage: 'ja',
+      items: [{ id: 'imported:1', text: '猫', nativeText: '猫', ruby: [{ text: '猫' }] }] })
+    await mount()
+    act(() => {
+      const element = container.querySelector<HTMLSelectElement>('#deck-select')!
+      element.value = 'imported'; element.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    act(() => button('卡组详情').click())
+    act(() => button('删除此卡组').click())
+    act(() => button('确认删除').click())
+    await until(() => ![...container.querySelectorAll('#deck-select option')].some((option) => (option as HTMLOptionElement).value === 'imported'))
+    expect(container.querySelector<HTMLSelectElement>('#deck-select')?.value).toBe('test-deck')
+    expect(await loadImportedDecks()).toEqual([])
+    act(() => button('卡组详情').click())
+    expect(container.textContent).not.toContain('删除此卡组')
   })
 
   it('offers no in-app import and points to the author instead', async () => {

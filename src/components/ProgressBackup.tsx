@@ -55,7 +55,7 @@ export function ProgressBackup({ onRestore }: Props) {
         void restore(event.target.files?.[0]); event.target.value = ''
       }} />
     </div>
-    <p className="backup-help">备份全部成绩、逐句记录、复习计划与永久跳过记录。恢复时合并记录，同一句保留较新的计划；兼容旧备份。自定义卡组请另存原 APKG 文件。</p>
+    <p className="backup-help">备份全部成绩、逐句记录、复习计划与永久跳过记录。恢复时合并记录，同一句保留较新的计划；兼容旧备份。</p>
     <p className="backup-help">记录长期保存在此浏览器，清除网站数据仍会丢失，请定期导出。单个备份恢复上限 256 MB。</p>
     {message && <p role="status" className="backup-status">{message}</p>}
     {error && <p role="alert" className="error-message">{error}</p>}

@@ -18,7 +18,8 @@ export function accountError(error: unknown): string {
   if (/rate limit|over_email_send_rate_limit|email rate/i.test(message)) return '操作过于频繁，请稍后重试。'
   if (/Email address not authorized|Error sending/i.test(message)) return '注册邮件暂时无法发送，请稍后重试或联系站长。'
   if (/device_clock_ahead/i.test(message)) return '设备时间快于服务器，请校准系统时间后重试；本地记录已保留。'
-  if (/卡组文本超过/.test(message)) return message
+  if (/卡组超过/.test(message)) return message
+  if (/reauthentication_required/i.test(message)) return '验证已过期，请重新输入当前密码后再删除账号。'
   if (/quota|too_large/i.test(message)) return '已达到云同步容量限制，本地记录仍保留，请导出备份并联系站长。'
   if (/qiaoqiao_|schema cache|PGRST202/i.test(message)) return '云同步服务尚未配置完成，本地练习仍可使用。'
   if (/fetch|network|timeout|abort/i.test(message)) return '连接失败，本地记录已保留，联网后可重试。'

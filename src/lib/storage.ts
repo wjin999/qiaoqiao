@@ -1,15 +1,18 @@
 import type { HistoryEntry, LessonItem } from '../types'
 import { reviewSentence, sentenceKey, type ReviewEntry, type SentenceProgress } from './scheduler'
-import { getAccountScope, scopedDatabase, notifyLocalChange, CLOUD_APPLIED } from './account-scope'
-import { cloudKey, type CloudKind, type CloudMutation, type CloudRow } from './cloud-types'
+import { getAccountScope, scopedDatabase, notifyLocalChange } from './account-scope'
+import { cloudKey, isDeckTombstone, type CloudChanges, type CloudKind, type CloudMutation, type CloudRow, type RejectedChange } from './cloud-types'
 import type { Lesson } from '../types'
 import { rebuildCards } from './reconcile'
+import { jsonbTextBytes, SYNC_LIMITS } from './sync-size'
 
 export const HISTORY_KEY = 'typelingo.history.ja.v2'
 export const PERMANENTLY_SKIPPED_KEY = 'typelingo.skipped-sentences.ja.v1'
 export const PROGRESS_UPDATED_KEY = 'typelingo.progress.updated.v3'
 export const PROGRESS_DATABASE = 'typelingo.progress'
-const STORES = ['history', 'cards', 'reviews', 'skips', 'meta', 'outbox', 'settings', 'decks', 'seeds']
+const DATABASE_VERSION = 3
+// quarantine: pulled rows this version cannot read yet; rejected: changes the server will never accept.
+const STORES = ['history', 'cards', 'reviews', 'skips', 'meta', 'outbox', 'settings', 'decks', 'seeds', 'quarantine', 'rejected']
 export interface ProgressData {
   history: HistoryEntry[]
   permanentlySkippedSentenceIds: string[]
@@ -36,20 +39,24 @@ function legacyValues(key: string): unknown[] {
   } catch { return [] }
 }
 
-function openDatabase(account = getAccountScope()): Promise<IDBDatabase> {
+function connect(name: string, account: string | null): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(scopedDatabase(PROGRESS_DATABASE, account), 2)
+    const request = indexedDB.open(name, DATABASE_VERSION)
     request.onupgradeneeded = () => {
       const db = request.result
-      for (const name of STORES) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' })
-      const history = request.transaction!.objectStore('history')
+      const upgrade = request.transaction!
+      for (const store of STORES) if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' })
+      const history = upgrade.objectStore('history')
       if (!history.indexNames.contains('completedAt')) history.createIndex('completedAt', 'completedAt')
+      const reviews = upgrade.objectStore('reviews')
+      if (!reviews.indexNames.contains('sentence')) reviews.createIndex('sentence', ['lessonId', 'sentenceId'])
+      // Earlier versions queued guest changes that were never uploaded.
+      if (!account) upgrade.objectStore('outbox').clear()
     }
     request.onerror = () => reject(new Error('无法读取学习记录，请检查浏览器是否允许本地存储。'))
     request.onblocked = () => reject(new Error('请关闭其他日语敲敲页面后重试。'))
     request.onsuccess = () => {
       const db = request.result
-      db.onversionchange = () => db.close()
       const tx = db.transaction(['meta', 'history', 'skips'], 'readwrite')
       const marker = tx.objectStore('meta').get('legacy-migrated')
       marker.onsuccess = () => {
@@ -67,26 +74,57 @@ function openDatabase(account = getAccountScope()): Promise<IDBDatabase> {
   })
 }
 
-function announce() {
+// One connection per database, opened (and migrated) once instead of for every read and write.
+const connections = new WeakMap<IDBFactory, Map<string, Promise<IDBDatabase>>>()
+function databaseCache() {
+  let cache = connections.get(indexedDB)
+  if (!cache) { cache = new Map(); connections.set(indexedDB, cache) }
+  return cache
+}
+function openDatabase(account: string | null): Promise<IDBDatabase> {
+  const cache = databaseCache()
+  const name = scopedDatabase(PROGRESS_DATABASE, account)
+  const cached = cache.get(name)
+  if (cached) return cached
+  const forget = () => { if (cache.get(name) === opening) cache.delete(name) }
+  const opening = connect(name, account).then((db) => {
+    db.onversionchange = () => { db.close(); forget() }
+    db.onclose = forget
+    return db
+  }, (error: unknown) => { forget(); throw error })
+  cache.set(name, opening)
+  return opening
+}
+
+export function announceProgressUpdate() {
   try { window.localStorage.setItem(PROGRESS_UPDATED_KEY, crypto.randomUUID()) } catch { /* IndexedDB is authoritative. */ }
 }
 
 async function transaction<T>(names: string[], mode: IDBTransactionMode,
   work: (tx: IDBTransaction, result: (value: T) => void, fail: (message: string) => void) => void,
   account = getAccountScope(), silent = false): Promise<T> {
-  const db = await openDatabase(account)
+  // Guests never sync, so only account writes are queued for upload.
+  const stores = [...new Set([...names, ...(mode === 'readwrite' && account ? ['outbox'] : [])])]
+  let tx: IDBTransaction
+  try { tx = (await openDatabase(account)).transaction(stores, mode) }
+  catch (error) {
+    // The connection was closed under us (another tab upgraded it, or site data was cleared).
+    if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error
+    databaseCache().delete(scopedDatabase(PROGRESS_DATABASE, account))
+    tx = (await openDatabase(account)).transaction(stores, mode)
+  }
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([...new Set([...names, ...(mode === 'readwrite' ? ['outbox'] : [])])], mode)
     let value: T
     let message = '学习记录未能保存，请检查浏览器存储空间后重试。'
-    tx.oncomplete = () => { db.close(); if (mode === 'readwrite' && !silent) { announce(); if (account === getAccountScope()) notifyLocalChange() }; resolve(value) }
-    tx.onabort = () => { db.close(); reject(new Error(message)) }
+    tx.oncomplete = () => { if (mode === 'readwrite' && !silent) { announceProgressUpdate(); if (account === getAccountScope()) notifyLocalChange() }; resolve(value) }
+    tx.onabort = () => reject(new Error(message))
     try { work(tx, (next) => { value = next }, (reason) => { message = reason; tx.abort() }) }
     catch { tx.abort() }
   })
 }
 
 function enqueue(tx: IDBTransaction, kind: CloudKind, key: string, value: unknown) {
+  if (!tx.objectStoreNames.contains('outbox')) return
   tx.objectStore('outbox').put({ id: cloudKey(kind, key), kind, key, value, mutationId: crypto.randomUUID() } satisfies CloudMutation)
 }
 
@@ -158,11 +196,12 @@ export async function clearPermanentlySkippedSentences(sentenceIds?: string[]): 
 export async function recordReview(review: ReviewEntry, item: LessonItem, history: HistoryEntry,
   expectedUpdatedAt?: string): Promise<SentenceProgress | undefined> {
   const account = getAccountScope()
+  const key = sentenceKey(review.lessonId, item.id)
   return transaction(['reviews', 'cards', 'history', 'seeds'], 'readwrite', (tx, done, fail) => {
     const logs = tx.objectStore('reviews')
     const existing = logs.get(review.id)
     existing.onsuccess = () => {
-      const request = tx.objectStore('cards').get(sentenceKey(review.lessonId, item.id))
+      const request = tx.objectStore('cards').get(key)
       request.onsuccess = () => {
         try {
         const previous = request.result as SentenceProgress | undefined
@@ -180,9 +219,10 @@ export async function recordReview(review: ReviewEntry, item: LessonItem, histor
           done(next)
         }
         if (account && review.rating !== null && previous?.updatedAt !== expectedUpdatedAt) {
-          const all = logs.getAll(); const seeds = tx.objectStore('seeds').getAll()
-          seeds.onsuccess = () => {
-            try { save(rebuildCards([...all.result, review], seeds.result).find((card) => card.id === sentenceKey(review.lessonId, item.id))) }
+          // Another device or tab changed this sentence: replay its complete log.
+          const all = logs.index('sentence').getAll([review.lessonId, item.id]); const seed = tx.objectStore('seeds').get(key)
+          seed.onsuccess = () => {
+            try { save(rebuildCards([...all.result, review], seed.result ? [seed.result] : []).find((card) => card.id === key)) }
             catch { fail('无法合并这次评分，请重试。') }
           }
         } else save(review.rating === null ? previous : reviewSentence(previous, review.lessonId, item, review.rating, new Date(review.reviewedAt)))
@@ -236,12 +276,18 @@ export async function loadStoredDecks(account = getAccountScope()): Promise<Less
   }, account)
 }
 
+export const deckFitsCloud = (lesson: Lesson) => jsonbTextBytes(JSON.stringify(lesson)) <= SYNC_LIMITS.deckBytes
+
 export async function storeDeck(lesson: Lesson, account = getAccountScope()) {
-  if (account && new TextEncoder().encode(JSON.stringify(lesson)).length > 10 * 1024 * 1024) {
-    throw new Error('卡组文本超过 10 MB 的云同步上限，请在 Anki 中拆分卡组后导入。')
-  }
+  if (account && !deckFitsCloud(lesson)) throw new Error('卡组超过 10 MB 的云同步上限，未保存到账号。')
   await transaction<void>(['decks'], 'readwrite', (tx) => {
     tx.objectStore('decks').put(lesson); enqueue(tx, 'deck', lesson.id, lesson)
+  }, account)
+}
+
+export async function deleteStoredDeck(id: string, account = getAccountScope()) {
+  await transaction<void>(['decks'], 'readwrite', (tx) => {
+    tx.objectStore('decks').delete(id); enqueue(tx, 'deck', id, { id, deleted: true })
   }, account)
 }
 
@@ -258,17 +304,28 @@ export async function storeSetting(key: string, value: string, account = getAcco
   }, account)
 }
 
-export async function pendingChanges(account: string): Promise<CloudMutation[]> {
+export async function pendingChanges(account: string | null): Promise<CloudMutation[]> {
   return transaction(['outbox'], 'readonly', (tx, done) => {
     const request = tx.objectStore('outbox').getAll(); request.onsuccess = () => done(request.result)
   }, account)
 }
 
-export async function acknowledgeChanges(account: string, sent: CloudMutation[]) {
-  await transaction<void>(['outbox'], 'readwrite', (tx) => {
+// Removes accepted changes from the queue and moves rejected ones aside, unless the
+// record was edited again during the upload (it then has a new mutation ID).
+export async function acknowledgeChanges(account: string, sent: CloudMutation[], rejected: RejectedChange[] = []) {
+  await transaction<void>(['outbox', 'rejected'], 'readwrite', (tx) => {
+    const outbox = tx.objectStore('outbox')
     for (const entry of sent) {
-      const store = tx.objectStore('outbox'); const request = store.get(entry.id)
-      request.onsuccess = () => { if (request.result?.mutationId === entry.mutationId) store.delete(entry.id) }
+      const request = outbox.get(entry.id)
+      request.onsuccess = () => { if (request.result?.mutationId === entry.mutationId) outbox.delete(entry.id) }
+    }
+    for (const { change, error } of rejected) {
+      const request = outbox.get(change.id)
+      request.onsuccess = () => {
+        if (request.result?.mutationId !== change.mutationId) return
+        outbox.delete(change.id)
+        tx.objectStore('rejected').put({ ...change, error, rejectedAt: new Date().toISOString() })
+      }
     }
   }, account, true)
 }
@@ -279,44 +336,77 @@ export async function cloudCursor(account: string): Promise<number> {
   }, account)
 }
 
-export async function applyCloudRows(account: string, rows: CloudRow[], cursor: number) {
+export async function loadQuarantine(account: string): Promise<CloudRow[]> {
+  return transaction(['quarantine'], 'readonly', (tx, done) => {
+    const request = tx.objectStore('quarantine').getAll(); request.onsuccess = () => done(request.result)
+  }, account)
+}
+
+// Rebuilds only the schedules of sentences whose logs or checkpoints changed.
+function rebuildTouched(tx: IDBTransaction, touched: Map<string, [string, string]>, fail: (message: string) => void) {
+  if (!touched.size) return
+  const lookups = [...touched].map(([key, sentence]) => ({ key,
+    logs: tx.objectStore('reviews').index('sentence').getAll(sentence), seed: tx.objectStore('seeds').get(key) }))
+  // Requests complete in order, so every lookup has finished when this one does.
+  const ready = tx.objectStore('meta').count()
+  ready.onsuccess = () => {
+    try {
+      for (const { key, logs, seed } of lookups) {
+        const card = rebuildCards(logs.result, seed.result ? [seed.result] : []).find((entry) => entry.id === key)
+        if (card) tx.objectStore('cards').put(card)
+      }
+    } catch { fail('云端复习记录无法合并，本地记录未改变。') }
+  }
+}
+
+// Applies one pulled page (or, with a null cursor, quarantined rows that are now readable).
+// Rows this version cannot read are kept aside instead of blocking the rest of the page.
+export async function applyCloudRows(account: string, rows: CloudRow[], cursor: number | null,
+  readable: (row: CloudRow) => boolean = () => true): Promise<CloudChanges> {
+  const changed: CloudChanges = { progress: false, settings: false, decks: false }
   await transaction<void>(STORES, 'readwrite', (tx, _done, fail) => {
-    const oldCursor = tx.objectStore('meta').get('cloud-cursor')
-    const pendingRequest = tx.objectStore('outbox').getAll()
-    const reviewRequest = tx.objectStore('reviews').getAll()
-    const seedRequest = tx.objectStore('seeds').getAll()
-    const historyRequest = tx.objectStore('history').getAll()
-    historyRequest.onsuccess = () => {
+    const store = (name: string) => tx.objectStore(name)
+    const oldCursor = store('meta').get('cloud-cursor')
+    const lookups = rows.map((row) => ({ row,
+      pending: store('outbox').count(cloudKey(row.kind, row.key)),
+      previous: row.kind === 'history' ? store('history').get(row.key) : row.kind === 'seed' ? store('seeds').get(row.key) : undefined }))
+    const ready = store('meta').count()
+    ready.onsuccess = () => {
       try {
-      if ((oldCursor.result?.value ?? 0) > cursor) return // A different tab has already advanced further.
-      const pending = new Set((pendingRequest.result as CloudMutation[]).map((entry) => entry.id))
-      const reviews = new Map((reviewRequest.result as ReviewEntry[]).map((entry) => [entry.id, entry]))
-      const seeds = new Map((seedRequest.result as SentenceProgress[]).map((entry) => [entry.id, entry]))
-      const histories = new Map((historyRequest.result as HistoryEntry[]).map((entry) => [entry.id, entry]))
-      for (const row of rows) {
+        if (cursor !== null && (oldCursor.result?.value ?? 0) > cursor) return // A different tab has already advanced further.
+        const touched = new Map<string, [string, string]>()
+        for (const { row, pending, previous } of lookups) {
+          const id = cloudKey(row.kind, row.key)
+          store('quarantine').delete(id)
+          if (!readable(row)) { store('quarantine').put({ ...row, id }); continue }
           // A mutation made while the request was in flight still belongs to this device.
-          if (pending.has(cloudKey(row.kind, row.key)) && ['setting', 'skip', 'deck'].includes(row.kind)) continue
+          if (pending.result > 0 && ['setting', 'skip', 'deck'].includes(row.kind)) continue
           if (row.kind === 'skip') {
-            const store = tx.objectStore('skips'); if (row.value) store.put({ id: row.key }); else store.delete(row.key)
-          } else if (row.kind === 'setting') tx.objectStore('settings').put({ id: row.key, value: row.value })
-          else if (row.kind === 'review') { reviews.set(row.key, row.value as ReviewEntry); tx.objectStore('reviews').put(row.value) }
-          else if (row.kind === 'deck') tx.objectStore('decks').put(row.value)
-          else if (row.kind === 'seed') {
-            const previous = seeds.get(row.key)
-            if (!previous || previous.updatedAt < (row.value as SentenceProgress).updatedAt) {
-              seeds.set(row.key, row.value as SentenceProgress); tx.objectStore('seeds').put(row.value)
+            if (row.value) store('skips').put({ id: row.key }); else store('skips').delete(row.key)
+            changed.progress = true
+          } else if (row.kind === 'setting') {
+            store('settings').put({ id: row.key, value: row.value }); changed.settings = true
+          } else if (row.kind === 'deck') {
+            if (isDeckTombstone(row.value)) store('decks').delete(row.key); else store('decks').put(row.value)
+            changed.decks = true
+          } else if (row.kind === 'review') {
+            const review = row.value as ReviewEntry
+            store('reviews').put(review); changed.progress = true
+            if (review.rating !== null) touched.set(sentenceKey(review.lessonId, review.sentenceId), [review.lessonId, review.sentenceId])
+          } else if (row.kind === 'seed') {
+            const seed = row.value as SentenceProgress, old = previous?.result as SentenceProgress | undefined
+            if (!old || old.updatedAt < seed.updatedAt) {
+              store('seeds').put(seed); touched.set(seed.id, [seed.lessonId, seed.sentenceId]); changed.progress = true
             }
           } else if (row.kind === 'history') {
-            const previous = histories.get(row.key)
-            if (!previous || previous.completedAt <= (row.value as HistoryEntry).completedAt) tx.objectStore('history').put(row.value)
+            const entry = row.value as HistoryEntry, old = previous?.result as HistoryEntry | undefined
+            if (!old || old.completedAt <= entry.completedAt) { store('history').put(entry); changed.progress = true }
           }
-      }
-            const cards = rebuildCards([...reviews.values()], [...seeds.values()])
-            const store = tx.objectStore('cards'); store.clear()
-            for (const card of cards) store.put(card)
-            tx.objectStore('meta').put({ id: 'cloud-cursor', value: cursor })
+        }
+        if (cursor !== null) store('meta').put({ id: 'cloud-cursor', value: cursor })
+        rebuildTouched(tx, touched, fail)
       } catch { fail('云端复习记录无法合并，本地记录未改变。') }
     }
   }, account, true)
-  if (account === getAccountScope()) { announce(); window.dispatchEvent(new Event(CLOUD_APPLIED)) }
+  return changed
 }
