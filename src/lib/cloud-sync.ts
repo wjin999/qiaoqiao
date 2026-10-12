@@ -2,7 +2,7 @@ import { acknowledgeChanges, applyCloudRows, cloudCursor, pendingChanges, validH
 import { getAccountScope } from './account-scope'
 import { publishableKey, supabaseUrl } from './supabase'
 import { validCard, validReview } from './progress-backup'
-import { isPreference } from './preferences'
+import { isPreference, isRetiredPreference } from './preferences'
 import type { CloudMutation, CloudRow } from './cloud-types'
 import type { Lesson } from '../types'
 
@@ -34,7 +34,7 @@ export function validDeck(value: unknown): value is Lesson {
 export function validCloudRow(row: CloudRow): boolean {
   if (!row || typeof row.key !== 'string' || !Number.isSafeInteger(row.version) || row.version < 1) return false
   if (row.kind === 'skip') return typeof row.value === 'boolean'
-  if (row.kind === 'setting') return isPreference(row.key) && typeof row.value === 'string'
+  if (row.kind === 'setting') return (isPreference(row.key) || isRetiredPreference(row.key)) && typeof row.value === 'string'
   if (!row.value || (row.value as { id?: string }).id !== row.key) return false
   if (row.kind === 'review') return validReview(row.value)
   if (row.kind === 'history') return validHistoryEntry(row.value)
@@ -94,7 +94,7 @@ export async function syncAccount(account: string, transport: SyncTransport): Pr
       if (!rows.length) break
       if (rows.some((row, index) => row.version <= (index ? rows[index - 1]!.version : cursor))) throw new Error('云端同步顺序无效，请重试。')
       cursor = rows[rows.length - 1]!.version
-      await applyCloudRows(account, rows, cursor)
+      await applyCloudRows(account, rows.filter((row) => !(row.kind === 'setting' && isRetiredPreference(row.key))), cursor)
       if (rows.length < 100) break
     }
   }

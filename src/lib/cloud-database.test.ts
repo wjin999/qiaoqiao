@@ -55,7 +55,7 @@ describe('Supabase migration under PostgreSQL', () => {
     await expect(db.query('select public.qiaoqiao_push($1::jsonb)', [JSON.stringify(bad)])).rejects.toThrow('invalid_sync_record')
     expect((await db.query<{ value: string }>("select * from public.qiaoqiao_pull(0) where kind = 'setting'")).rows[0]?.value).toBe('free')
   })
-  it('syncs companion preferences and preserves the companion attached to an immutable practice record', async () => {
+  it('still accepts companion records from older clients and keeps practice records immutable', async () => {
     await login(a)
     const settings = JSON.stringify({ petId: 'golden', enabled: true, animations: true })
     await push(settings, crypto.randomUUID(), 'setting', 'qiaoqiao.companion.v1')

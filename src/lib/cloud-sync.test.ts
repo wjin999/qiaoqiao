@@ -8,7 +8,6 @@ import { syncAccount, validCloudRow, type SyncTransport } from './cloud-sync'
 import { rebuildCards } from './reconcile'
 import { reviewSentence, type ReviewEntry } from './scheduler'
 import type { CloudMutation, CloudRow } from './cloud-types'
-import { companionPreferences, petGrowth, PET_PREFERENCE_KEY } from './companions'
 
 const item = { id: 'sentence', text: '猫', nativeText: '猫', ruby: [{ text: '猫' }] }
 const review: ReviewEntry = { id: 'a:1', lessonId: 'deck', sentenceId: 'sentence', reviewedAt: '2026-09-20T01:00:00.000Z', mode: 'memory', rating: 3, hintUsed: false, elapsedMs: 1000 }
@@ -17,49 +16,46 @@ beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); localStorage.cl
 afterEach(() => { setAccountScope(null); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('account synchronization', () => {
-  it('queues both outfits for sync, restores them on another device, and isolates accounts', async () => {
-    const wardrobe = JSON.stringify({ petId: 'golden', enabled: true, animations: true, outfits: { golden: 'explorer', tuxedo: 'varsity' } })
-    await storeSetting(PET_PREFERENCE_KEY, wardrobe)
+  it('queues settings for sync, restores them on another device, and isolates accounts', async () => {
+    await storeSetting('typelingo.mode', 'free')
     const push = vi.fn(async (_changes: CloudMutation[]) => {})
     await syncAccount('account-a', { push, pull: async () => [] })
-    expect(push.mock.calls[0]?.[0]).toEqual(expect.arrayContaining([expect.objectContaining({ key: PET_PREFERENCE_KEY, value: wardrobe })]))
+    expect(push.mock.calls[0]?.[0]).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'typelingo.mode', value: 'free' })]))
     setAccountScope('fresh-device')
-    await syncAccount('fresh-device', { push: async () => {}, pull: async () => [{ kind: 'setting', key: PET_PREFERENCE_KEY, value: wardrobe, version: 1 }] })
-    expect(companionPreferences((await loadSettings())[PET_PREFERENCE_KEY]!).outfits).toEqual({ golden: 'explorer', tuxedo: 'varsity' })
+    await syncAccount('fresh-device', { push: async () => {}, pull: async () => [{ kind: 'setting', key: 'typelingo.mode', value: 'free', version: 1 }] })
+    expect((await loadSettings())['typelingo.mode']).toBe('free')
     setAccountScope('unrelated-account')
-    expect((await loadSettings())[PET_PREFERENCE_KEY]).toBeUndefined()
+    expect((await loadSettings())['typelingo.mode']).toBeUndefined()
   })
-  it('merges golden retriever and cat growth from two devices and remembers the chosen cat', async () => {
-    const local: ReviewEntry = { ...review, petId: 'golden' }
-    const remote: ReviewEntry = { ...review, id: 'device-b:1', reviewedAt: '2026-09-20T02:00:00Z', petId: 'tuxedo' }
-    await recordReview(local, item, history)
+  it('applies reviews and settings recorded on another device', async () => {
+    const remote: ReviewEntry = { ...review, id: 'device-b:1', reviewedAt: '2026-09-20T02:00:00Z' }
+    await recordReview(review, item, history)
     const rows: CloudRow[] = [
       { kind: 'review', key: remote.id, value: remote, version: 1 },
-      { kind: 'setting', key: PET_PREFERENCE_KEY, value: '{"petId":"tuxedo","enabled":true,"animations":false}', version: 2 },
-      { kind: 'review', key: local.id, value: local, version: 3 },
+      { kind: 'setting', key: 'typelingo.daily-new', value: '20', version: 2 },
+      { kind: 'review', key: review.id, value: review, version: 3 },
     ]
     expect(rows.every(validCloudRow)).toBe(true)
     await syncAccount('account-a', { push: async () => {}, pull: async () => rows })
     await syncAccount('account-a', { push: async () => {}, pull: async () => [] })
-    expect(petGrowth((await exportProgress()).reviews)).toEqual({ golden: 1, tuxedo: 1 })
-    expect((await loadSettings())[PET_PREFERENCE_KEY]).toContain('tuxedo')
+    expect((await exportProgress()).reviews).toHaveLength(2)
+    expect((await loadSettings())['typelingo.daily-new']).toBe('20')
   })
-  it('continues syncing legacy companion records without duplication or account leakage', async () => {
-    const local: ReviewEntry = { ...review, petId: 'mole' }
-    const remote: ReviewEntry = { ...review, id: 'device-b:1', reviewedAt: '2026-09-20T02:00:00Z', petId: 'sparrow' }
+  it('accepts records from the retired companion feature and ignores its setting', async () => {
+    const local = { ...review, petId: 'golden' }
+    const remote = { ...review, id: 'device-b:1', reviewedAt: '2026-09-20T02:00:00Z', petId: 'sparrow' }
     await recordReview(local, item, history)
     const rows: CloudRow[] = [
       { kind: 'review', key: remote.id, value: remote, version: 1 },
-      { kind: 'setting', key: PET_PREFERENCE_KEY, value: '{"petId":"sprout","enabled":true,"animations":false}', version: 2 },
+      { kind: 'setting', key: 'qiaoqiao.companion.v1', value: '{"petId":"tuxedo","enabled":true}', version: 2 },
       { kind: 'review', key: local.id, value: local, version: 3 },
     ]
     expect(rows.every(validCloudRow)).toBe(true)
-    const transport: SyncTransport = { push: async () => {}, pull: async () => rows }
-    await syncAccount('account-a', transport)
-    await syncAccount('account-a', { push: async () => {}, pull: async () => [] })
+    await syncAccount('account-a', { push: async () => {}, pull: async () => rows })
     expect((await exportProgress()).reviews).toEqual(expect.arrayContaining([local, remote]))
     expect((await exportProgress()).reviews).toHaveLength(2)
-    expect((await loadSettings())[PET_PREFERENCE_KEY]).toContain('sprout')
+    expect((await loadSettings())['qiaoqiao.companion.v1']).toBeUndefined()
+    expect(await cloudCursor('account-a')).toBe(3)
     setAccountScope('account-b')
     expect((await exportProgress()).reviews).toEqual([])
   })

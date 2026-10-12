@@ -8,7 +8,6 @@ import App from './App'
 import { AccountProvider } from './components/Account'
 import { getAccountScope, setAccountScope } from './lib/account-scope'
 import { exportProgress, pendingChanges } from './lib/storage'
-import { PET_PREFERENCE_KEY, petGrowth } from './lib/companions'
 
 const network = vi.hoisted(() => ({
   listener: undefined as undefined | ((event: string, session: Session | null) => void),
@@ -65,9 +64,8 @@ async function finishSentence(free = false) {
   await until(() => !!container.querySelector('.result-screen') || container.querySelector('#typing-input')?.getAttribute('value') === '')
 }
 
-it.each([false, true])('syncs a completed round once after all learning and pet records are persisted (free=%s)', async (free) => {
+it.each([false, true])('syncs a completed round once after all learning records are persisted (free=%s)', async (free) => {
   await mount()
-  act(() => button('点点').click()); await until(() => button('点点').getAttribute('aria-pressed') === 'true')
   if (free) act(() => button('自由跟打').click())
   await start(); await finishSentence(free)
   expect(network.push).not.toHaveBeenCalled(); expect(network.pull).not.toHaveBeenCalled()
@@ -78,12 +76,12 @@ it.each([false, true])('syncs a completed round once after all learning and pet 
   expect(container.querySelector('.result-subtitle')?.textContent).toContain('正在同步')
   const batch = network.push.mock.calls[0]![0]
   expect(batch.filter((row: any) => row.kind === 'review')).toHaveLength(2)
-  expect(batch.filter((row: any) => row.kind === 'review').every((row: any) => row.value.petId === 'tuxedo')).toBe(true)
+  expect(batch.filter((row: any) => row.kind === 'review').some((row: any) => 'petId' in row.value)).toBe(false)
   expect(batch).toEqual(expect.arrayContaining([
-    expect.objectContaining({ kind: 'setting', key: PET_PREFERENCE_KEY, value: expect.stringContaining('tuxedo') }),
     expect.objectContaining({ kind: 'history', value: expect.objectContaining({ sentenceCount: 2, partial: false }) }),
+    ...free ? [expect.objectContaining({ kind: 'setting', key: 'typelingo.mode', value: 'free' })] : [],
   ]))
-  expect(petGrowth((await exportProgress()).reviews)).toEqual({ golden: 0, tuxedo: 2 })
+  expect((await exportProgress()).reviews).toHaveLength(2)
   await act(async () => release()); await until(() => container.textContent?.includes('已同步') ?? false)
   expect(await pendingChanges(getAccountScope()!)).toHaveLength(0)
   act(() => button('回到主页').click())
