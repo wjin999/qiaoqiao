@@ -9,7 +9,7 @@
 3. Authentication → URL Configuration：Site URL 设置为 `https://wjin999.github.io/qiaoqiao/`；Redirect URLs 加入同一地址，开发时另加 `http://localhost:5173/` 和 `http://127.0.0.1:5173/`。更换域名前先添加新地址，完成旧站记录同步或备份后再跳转。
 4. API Keys 中复制 Publishable key（或旧版 anon PUBLIC key）。**不使用 Secret key、service_role、数据库密码。**
 5. 把 `.env.example` 复制为 `.env.local`，填写公开 key。重启开发服务器。
-6. GitHub 仓库 Settings → Secrets and variables → Actions → Variables 中添加 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`。这些是公开浏览器配置，不是管理员凭据。重新运行部署 workflow 后生效。
+6. GitHub 仓库 Settings → Secrets and variables → Actions → Variables 中添加 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`。这些是公开浏览器配置，不是管理员凭据。再添加 `ACCOUNT_SYNC`，值为 `true`；没有这个变量时，部署不带公开 key，线上版本只作为本地练习工具（目前即是如此）。重新运行部署 workflow 后生效。
 
 ## 2. 邮箱与公开注册
 

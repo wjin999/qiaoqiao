@@ -32,7 +32,9 @@ jobs:
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # Account sync stays off until the repository variable ACCOUNT_SYNC is "true";
+          # without the key the site is built as a local-only practice tool.
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.ACCOUNT_SYNC == 'true' && vars.VITE_SUPABASE_PUBLISHABLE_KEY || '' }}
       - name: Upload artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
