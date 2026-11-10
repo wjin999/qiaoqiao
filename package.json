@@ -18,6 +18,7 @@
   "dependencies": {
     "@fontsource/klee-one": "^5.3.1",
     "@supabase/supabase-js": "^2.116.0",
+    "budoux": "^0.10.3",
     "lxgw-wenkai-webfont": "^1.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

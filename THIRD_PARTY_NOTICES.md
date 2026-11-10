@@ -31,6 +31,10 @@
 - 日文与英文：[Klee One](https://github.com/fontworks-fonts/Klee)，Copyright 2020 The Klee Project Authors，经 [@fontsource/klee-one](https://fontsource.org/fonts/klee-one) 分片打包。
 - 中文：[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)，Copyright 2021-2023 LXGW，由 Klee One 衍生，经 [lxgw-wenkai-webfont](https://github.com/chawyehsu/lxgw-wenkai-webfont) 分片打包。
 
+## BudouX
+
+日文句子用 [BudouX](https://github.com/google/budoux) 0.10.3 找出词组（文节）边界，只在词组之间换行。Copyright 2021 Google LLC，Apache License 2.0。完整许可随网站发布，见 [public/licenses/budoux.txt](public/licenses/budoux.txt)。
+
 ## ts-fsrs
 
 记忆复习使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) 5.4.2（FSRS 调度库）。Copyright (c) 2026 Open Spaced Repetition，MIT 许可。完整许可随网站发布，见 [public/licenses/ts-fsrs.txt](public/licenses/ts-fsrs.txt)。

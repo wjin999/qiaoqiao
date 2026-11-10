@@ -79,6 +79,8 @@ function App() {
   const [clockNow, setClockNow] = useState(Date.now())
   const [completedAt, setCompletedAt] = useState<number | null>(null)
   const [showFurigana, setShowFurigana] = useState(true)
+  // Where the IME's unconfirmed text starts; it is shown as in progress, not judged, until confirmed.
+  const [composingFrom, setComposingFrom] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
   const savingRef = useRef(false)
@@ -216,6 +218,7 @@ function App() {
       hintUsedRef.current = mode === 'free' && lesson.targetLanguage === 'ja'
       sentenceStartedRef.current = Date.now()
       isComposingRef.current = false
+      setComposingFrom(null)
       setScreen('practice')
     } catch (error) { setProgressError(error instanceof Error ? error.message : '无法开始练习。') }
     finally { savingRef.current = false; setSaving(false) }
@@ -234,6 +237,7 @@ function App() {
 
   function handleCompositionStart() {
     isComposingRef.current = true
+    setComposingFrom(Array.from(typed).length)
   }
 
   function handleCompositionEnd(nextValue: string) {
@@ -242,6 +246,7 @@ function App() {
     }
 
     isComposingRef.current = false
+    setComposingFrom(null)
     setTyped(nextValue)
     if (nextValue === currentItem.text) {
       setCompletedAt(Date.now()); if (mode === 'memory') setShowFurigana(true)
@@ -273,6 +278,7 @@ function App() {
     hintUsedRef.current = mode === 'free' && practiceLanguage === 'ja'
     sentenceStartedRef.current = Date.now()
     isComposingRef.current = false
+    setComposingFrom(null)
   }
 
   function roundHistory(lesson: Lesson, sentenceCount: number): HistoryEntry {
@@ -442,7 +448,7 @@ function App() {
                   </button>
                 </div>}
                 <p className="sentence" lang={practiceLanguage} aria-label={currentItem.text}>
-                  <TargetSentence item={currentItem} typed={typed} showReadings={showFurigana} />
+                  <TargetSentence item={currentItem} typed={typed} showReadings={showFurigana} composingFrom={composingFrom} language={practiceLanguage} />
                 </p>
               </div>
 
