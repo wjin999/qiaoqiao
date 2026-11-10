@@ -168,7 +168,7 @@ describe('keyboard memory reviews', () => {
     type('猫1234。')
     expect(input().readOnly).toBe(true)
     expect(container.querySelectorAll('.rating-button')).toHaveLength(4)
-    expect([...container.querySelectorAll('kbd')].map((element) => element.textContent)).toEqual(['1', '2', '3', '4'])
+    expect([...container.querySelectorAll('.rating-options kbd')].map((element) => element.textContent)).toEqual(['1', '2', '3', '4'])
     expect(container.querySelector('rt')?.textContent).toBe('ねこ')
     key('Enter')
     expect(container.querySelector('.progress-count')?.textContent).toBe('1 / 10')
@@ -236,7 +236,8 @@ describe('keyboard memory reviews', () => {
     expect(data.history[0]?.sentenceCount).toBe(10)
     expect(data.history[0]?.partial).toBe(false)
     act(() => button('回到主页').click())
-    expect(container.textContent).toContain('今日已学新句 10 句')
+    const stat = [...container.querySelectorAll('.plan-stats > div')].find((row) => row.querySelector('dt')?.textContent === '今日已学新句')
+    expect(stat?.querySelector('dd')?.textContent).toBe('10 句')
     expect(button('暂时没有待练句子').disabled).toBe(true)
     // Once a round is finished, ask the browser to keep the records.
     expect(persist).toHaveBeenCalledTimes(1)

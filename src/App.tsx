@@ -350,7 +350,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-screen={screen}>
       <header className="site-header">
         <button className="brand" type="button" disabled={saving} onClick={() => { setSessionLesson(null); setScreen('home'); void refreshProgress() }}>
           <span className="brand-mark" aria-hidden="true">
@@ -375,7 +375,7 @@ function App() {
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
-            progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
+            progressBackup={<><ActivityHeatmap /><ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
@@ -385,7 +385,11 @@ function App() {
                 <p>{copy.memoryHint}</p>
                 <label className="daily-new-label">每天新句上限（当前卡组）<input aria-label="每天新句上限" type="number" min="0" max="100" value={dailyNewLimit}
                   disabled={syncing} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 100) { setDailyNewLimit(value); persistPreference('typelingo.daily-new', String(value)) } }} /></label>
-                <p aria-live="polite">到期 {plan.dueCount} 句 · 本轮新句 {plan.newCount} 句 · 今日已学新句 {plan.introducedToday} 句</p>
+                <dl className="plan-stats" aria-live="polite">
+                  <div><dt>到期</dt><dd>{plan.dueCount} <small>句</small></dd></div>
+                  <div><dt>本轮新句</dt><dd>{plan.newCount} <small>句</small></dd></div>
+                  <div><dt>今日已学新句</dt><dd>{plan.introducedToday} <small>句</small></dd></div>
+                </dl>
                 {lesson && progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>{copy.freeHint}</p>}
             </div>}
@@ -398,7 +402,7 @@ function App() {
         {screen === 'practice' && currentItem && lesson && (
           <section className="practice-screen" aria-label={`${copy.name}跟打练习`}>
             <div className="practice-meta">
-              <span className="eyebrow">{lesson.title}{currentItem.level ? ` · ${currentItem.level}` : ''}</span>
+              <span className="practice-deck">{lesson.title}{currentItem.level && <span className="practice-level">{currentItem.level}</span>}</span>
               <span className="progress-count">
                 {currentIndex + 1} / {queue.length}
               </span>
@@ -426,7 +430,7 @@ function App() {
                     aria-keyshortcuts="Tab"
                     onClick={toggleFurigana}
                   >
-                    汉字注音：{showFurigana ? '开' : '关'} · Tab
+                    注音{showFurigana ? '开' : '关'}<kbd>Tab</kbd>
                   </button>
                 </div>}
                 <p className="sentence" lang={practiceLanguage} aria-label={currentItem.text}>
@@ -514,7 +518,8 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        {session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
+        <span>{session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份。' : '游客记录保存在当前浏览器，请定期备份。'}</span>
+        <span>日语敲敲 v0.5</span>
       </footer>
     </div>
   )
@@ -555,7 +560,7 @@ function HomeScreen({
     <>
       <section className="hero" aria-labelledby="home-title">
         <div className="hero-copy">
-          <h1 id="home-title">{copy.title}</h1>
+          <h1 id="home-title">{Array.from(copy.title).map((char, index) => <span className="title-char" key={index}>{char}</span>)}</h1>
           <p>{copy.intro[0]}<br />{copy.intro[1]}</p>
           {practiceOptions}
           <button
@@ -565,7 +570,6 @@ function HomeScreen({
             disabled={!canStart}
           >
             {startLabel}
-            <span aria-hidden="true">→</span>
           </button>
           {permanentlySkippedCount > 0 && (
             <button
@@ -573,7 +577,7 @@ function HomeScreen({
               type="button"
               onClick={onRestoreSkipped}
             >
-              已永久跳过 {permanentlySkippedCount} 句 · 恢复全部
+              恢复已永久跳过的 {permanentlySkippedCount} 句
             </button>
           )}
         </div>
@@ -583,11 +587,8 @@ function HomeScreen({
 
       <section className="history-section" aria-labelledby="history-title">
         <div className="section-heading">
-          <div>
-            <span className="eyebrow">练习记录</span>
-            <h2 id="history-title">最近成绩</h2>
-          </div>
-          <span className="storage-note">共 {historyTotal} 轮 · 长期保存</span>
+          <h2 id="history-title">练习记录</h2>
+          <span className="storage-note">共 {historyTotal} 轮</span>
         </div>
 
         {progressBackup}
@@ -610,7 +611,7 @@ function HomeScreen({
                   }).format(new Date(entry.completedAt))}
                   {entry.lessonTitle && <small className="history-deck">{entry.lessonTitle}</small>}
                 </time>
-                <strong>完成 {entry.sentenceCount} 句{entry.partial && <small className="history-deck">未结束的一轮 · 已保存</small>}</strong>
+                <strong>完成 {entry.sentenceCount} 句{entry.partial && <small className="history-deck">未结束的一轮，已保存</small>}</strong>
                 <span>{formatDuration(entry.elapsedMs)}</span>
               </article>
             ))}
@@ -638,8 +639,7 @@ interface ResultScreenProps {
 function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
-      <span className="eyebrow">本轮完成</span>
-      <h1 id="result-title">练习完成</h1>
+      <h1 id="result-title">{Array.from('练习完成').map((char, index) => <span className="title-char" key={index}>{char}</span>)}</h1>
       {syncStatus !== undefined && <p className="backup-help" role="status">{syncStatus || '本轮已保存，准备同步…'}</p>}
       <p className="result-subtitle">
         {syncing ? '正在同步本轮进度，完成后可继续练习。' : !canRestart
@@ -673,7 +673,6 @@ function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onH
           disabled={!canRestart}
         >
           再来一组
-          <span aria-hidden="true">→</span>
         </button>
       </div>
     </section>
