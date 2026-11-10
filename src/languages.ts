@@ -1,6 +1,8 @@
 import type { TargetLanguage } from './types'
 
-export const LANGUAGE_ORDER: TargetLanguage[] = ['ja', 'en']
+// Languages the site offers. English is built and tested but hidden for now, to focus on Japanese;
+// add 'en' back here to reopen it.
+export const LANGUAGE_ORDER: TargetLanguage[] = ['ja']
 
 // Page copy for each target language. The practice layout is shared:
 // Chinese on top, the sentence to type in the middle, the input below.

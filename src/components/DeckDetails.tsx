@@ -16,7 +16,7 @@ export function DeckDetails({ lesson, onClose }: { lesson: Lesson; onClose: () =
     .filter(([, count]) => count > 0)
   return (
     <Modal title="卡组详情" onClose={onClose}>
-      <span className="eyebrow">内置卡组 · {LANGUAGES[lesson.targetLanguage].name}</span>
+      <p className="deck-detail-kind">内置{LANGUAGES[lesson.targetLanguage].name}卡组</p>
       <h3 className="deck-detail-title">{lesson.title}</h3>
       <p className="detail-description">{metadata?.description || `${LANGUAGES[lesson.targetLanguage].name}跟打练习卡组。`}</p>
       <dl className="deck-stats">

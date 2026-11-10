@@ -7,7 +7,7 @@ import { ReviewDock } from './components/ReviewDock'
 import { TargetSentence } from './components/TargetSentence'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { LANGUAGE_KEY, preference, savePreference } from './lib/preferences'
-import { LANGUAGES } from './languages'
+import { LANGUAGE_ORDER, LANGUAGES } from './languages'
 import { CLOUD_APPLIED } from './lib/account-scope'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
@@ -36,7 +36,10 @@ const SESSION_SIZE = 10
 const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
-const readLanguage = (): TargetLanguage => preference(LANGUAGE_KEY, 'ja') === 'en' ? 'en' : 'ja'
+// What each sentence of the round got: a grade, a free-mode pass, or a skip.
+type RoundMark = Grade | 'done' | 'skip'
+// A language saved earlier but no longer offered (English, for now) falls back to Japanese.
+const readLanguage = (): TargetLanguage => LANGUAGE_ORDER.find((language) => language === preference(LANGUAGE_KEY, 'ja')) ?? 'ja'
 
 function App() {
   const { session, syncing, status, sync, setPracticing } = useAccount()
@@ -58,6 +61,7 @@ function App() {
   const [typed, setTyped] = useState('')
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [completedSentenceCount, setCompletedSentenceCount] = useState(0)
+  const [marks, setMarks] = useState<RoundMark[]>([])
   const [summary, setSummary] = useState<PracticeSummary | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [historyTotal, setHistoryTotal] = useState(0)
@@ -206,6 +210,7 @@ function App() {
       setCompletedAt(null)
       setStartedAt(Date.now())
       setCompletedSentenceCount(0)
+      setMarks([])
       setSummary(null)
       setShowFurigana(mode === 'free')
       hintUsedRef.current = mode === 'free' && lesson.targetLanguage === 'ja'
@@ -277,6 +282,11 @@ function App() {
       partial: currentIndex + 1 < queue.length }
   }
 
+  function markSentence(mark: RoundMark) {
+    const index = currentIndex
+    setMarks((current) => { const next = [...current]; next[index] = mark; return next })
+  }
+
   async function submitSentence(grade: Grade | null) {
     if (!currentItem || !lesson || completedAt === null || isComposingRef.current || savingRef.current) return
     savingRef.current = true; setSaving(true); setProgressError('')
@@ -288,6 +298,7 @@ function App() {
       await recordReview(review,
         currentItem, roundHistory(lesson, nextCount), currentProgress?.updatedAt)
       setCompletedSentenceCount(nextCount)
+      markSentence(grade ?? 'done')
       advanceFromCurrent(nextCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
     finally { savingRef.current = false; setSaving(false); inputRef.current?.focus() }
@@ -299,6 +310,7 @@ function App() {
     try {
       if (permanent) setPermanentlySkippedIds(await permanentlySkipSentence(permanentlySkippedIds, currentItem.id))
       if (currentIndex + 1 >= queue.length) await addHistoryEntry([], roundHistory(lesson, completedSentenceCount))
+      markSentence('skip')
       advanceFromCurrent(completedSentenceCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
     finally { savingRef.current = false; setSaving(false) }
@@ -350,7 +362,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-screen={screen}>
       <header className="site-header">
         <button className="brand" type="button" disabled={saving} onClick={() => { setSessionLesson(null); setScreen('home'); void refreshProgress() }}>
           <span className="brand-mark" aria-hidden="true">
@@ -375,7 +387,7 @@ function App() {
             permanentlySkippedCount={skippedCount}
             onStart={startPractice}
             onRestoreSkipped={restorePermanentlySkippedSentences}
-            progressBackup={<>{session && <ActivityHeatmap />}<ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
+            progressBackup={<><ActivityHeatmap /><ProgressBackup onRestore={() => { setHistoryPage(0); void refreshProgress() }} /></>}
             practiceOptions={<div className="practice-options">
               <div className="mode-switch" role="group" aria-label="练习方式">
                 <button type="button" disabled={saving || syncing} aria-pressed={mode === 'memory'} onClick={() => { setMode('memory'); persistPreference('typelingo.mode', 'memory') }}>记忆复习</button>
@@ -385,7 +397,11 @@ function App() {
                 <p>{copy.memoryHint}</p>
                 <label className="daily-new-label">每天新句上限（当前卡组）<input aria-label="每天新句上限" type="number" min="0" max="100" value={dailyNewLimit}
                   disabled={syncing} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 100) { setDailyNewLimit(value); persistPreference('typelingo.daily-new', String(value)) } }} /></label>
-                <p aria-live="polite">到期 {plan.dueCount} 句 · 本轮新句 {plan.newCount} 句 · 今日已学新句 {plan.introducedToday} 句</p>
+                <dl className="plan-stats" aria-live="polite">
+                  <div><dt>到期</dt><dd>{plan.dueCount} <small>句</small></dd></div>
+                  <div><dt>本轮新句</dt><dd>{plan.newCount} <small>句</small></dd></div>
+                  <div><dt>今日已学新句</dt><dd>{plan.introducedToday} <small>句</small></dd></div>
+                </dl>
                 {lesson && progressReady && !plan.queue.length && <p>当前范围暂时没有待复习内容。{plan.nextDue ? `下次到期：${new Date(plan.nextDue).toLocaleString('zh-CN')}` : '可以调整等级、新句上限，或自由跟打。'}</p>}
               </> : <p>{copy.freeHint}</p>}
             </div>}
@@ -398,17 +414,13 @@ function App() {
         {screen === 'practice' && currentItem && lesson && (
           <section className="practice-screen" aria-label={`${copy.name}跟打练习`}>
             <div className="practice-meta">
-              <span className="eyebrow">{lesson.title}{currentItem.level ? ` · ${currentItem.level}` : ''}</span>
+              <span className="practice-deck">{lesson.title}{currentItem.level && <span className="practice-level">{currentItem.level}</span>}</span>
               <span className="progress-count">
                 {currentIndex + 1} / {queue.length}
               </span>
             </div>
 
-            <div className="progress-track" aria-hidden="true">
-              <span
-                style={{ width: `${((currentIndex + 1) / queue.length) * 100}%` }}
-              />
-            </div>
+            <RoundMarks count={queue.length} marks={marks} current={currentIndex} />
 
             <div className="typing-card">
               <div className="practice-line native-line">
@@ -426,7 +438,7 @@ function App() {
                     aria-keyshortcuts="Tab"
                     onClick={toggleFurigana}
                   >
-                    汉字注音：{showFurigana ? '开' : '关'} · Tab
+                    注音{showFurigana ? '开' : '关'}<kbd>Tab</kbd>
                   </button>
                 </div>}
                 <p className="sentence" lang={practiceLanguage} aria-label={currentItem.text}>
@@ -504,6 +516,7 @@ function App() {
         {screen === 'result' && summary && (
           <ResultScreen
             summary={summary}
+            marks={<RoundMarks count={queue.length} marks={marks} />}
             syncStatus={session ? status : undefined}
             syncing={syncing}
             canRestart={canStart}
@@ -514,7 +527,8 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        {session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份' : '游客记录保存在当前浏览器，请定期备份'} · 日语敲敲 v0.5
+        <span>{session ? '账号记录保存在本机，点击「同步」保存到云端；请定期备份。' : '游客记录保存在当前浏览器，请定期备份。'}</span>
+        <span>日语敲敲 v0.5</span>
       </footer>
     </div>
   )
@@ -555,7 +569,7 @@ function HomeScreen({
     <>
       <section className="hero" aria-labelledby="home-title">
         <div className="hero-copy">
-          <h1 id="home-title">{copy.title}</h1>
+          <h1 id="home-title">{Array.from(copy.title).map((char, index) => <span className="title-char" key={index}>{char}</span>)}</h1>
           <p>{copy.intro[0]}<br />{copy.intro[1]}</p>
           {practiceOptions}
           <button
@@ -565,7 +579,6 @@ function HomeScreen({
             disabled={!canStart}
           >
             {startLabel}
-            <span aria-hidden="true">→</span>
           </button>
           {permanentlySkippedCount > 0 && (
             <button
@@ -573,7 +586,7 @@ function HomeScreen({
               type="button"
               onClick={onRestoreSkipped}
             >
-              已永久跳过 {permanentlySkippedCount} 句 · 恢复全部
+              恢复已永久跳过的 {permanentlySkippedCount} 句
             </button>
           )}
         </div>
@@ -583,11 +596,8 @@ function HomeScreen({
 
       <section className="history-section" aria-labelledby="history-title">
         <div className="section-heading">
-          <div>
-            <span className="eyebrow">练习记录</span>
-            <h2 id="history-title">最近成绩</h2>
-          </div>
-          <span className="storage-note">共 {historyTotal} 轮 · 长期保存</span>
+          <h2 id="history-title">练习记录</h2>
+          <span className="storage-note">共 {historyTotal} 轮</span>
         </div>
 
         {progressBackup}
@@ -610,7 +620,7 @@ function HomeScreen({
                   }).format(new Date(entry.completedAt))}
                   {entry.lessonTitle && <small className="history-deck">{entry.lessonTitle}</small>}
                 </time>
-                <strong>完成 {entry.sentenceCount} 句{entry.partial && <small className="history-deck">未结束的一轮 · 已保存</small>}</strong>
+                <strong>完成 {entry.sentenceCount} 句{entry.partial && <small className="history-deck">未结束的一轮，已保存</small>}</strong>
                 <span>{formatDuration(entry.elapsedMs)}</span>
               </article>
             ))}
@@ -626,8 +636,22 @@ function HomeScreen({
   )
 }
 
+// One slot per sentence of the round; a rated sentence shows the mark a teacher would give it.
+function RoundMarks({ count, marks, current }: { count: number; marks: RoundMark[]; current?: number }) {
+  return (
+    <ol className="round-marks" aria-hidden="true" style={{ '--count': count } as React.CSSProperties}>
+      {Array.from({ length: count }, (_, index) => {
+        const mark = marks[index]
+        return <li key={index} data-state={index === current ? 'current' : mark ? 'done' : undefined}
+          data-mark={mark === undefined || mark === 'done' ? undefined : String(mark)} />
+      })}
+    </ol>
+  )
+}
+
 interface ResultScreenProps {
   summary: PracticeSummary
+  marks: React.ReactNode
   syncStatus?: string
   syncing: boolean
   canRestart: boolean
@@ -635,11 +659,10 @@ interface ResultScreenProps {
   onHome: () => void
 }
 
-function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
+function ResultScreen({ summary, marks, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
-      <span className="eyebrow">本轮完成</span>
-      <h1 id="result-title">练习完成</h1>
+      <h1 id="result-title">{Array.from('练习完成').map((char, index) => <span className="title-char" key={index}>{char}</span>)}</h1>
       {syncStatus !== undefined && <p className="backup-help" role="status">{syncStatus || '本轮已保存，准备同步…'}</p>}
       <p className="result-subtitle">
         {syncing ? '正在同步本轮进度，完成后可继续练习。' : !canRestart
@@ -648,6 +671,7 @@ function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onH
             ? `完成 ${summary.sentenceCount} 个句子，继续保持这份节奏。`
             : '本轮已结束，你可以返回主页或再来一组。'}
       </p>
+      {marks}
 
       <div className="result-grid">
         <article>
@@ -673,7 +697,6 @@ function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onH
           disabled={!canRestart}
         >
           再来一组
-          <span aria-hidden="true">→</span>
         </button>
       </div>
     </section>

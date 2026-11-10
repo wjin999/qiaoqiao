@@ -48,7 +48,7 @@ export function ActivityHeatmap() {
     scroller.current?.querySelector<HTMLButtonElement>(`[data-date="${day.date}"]`)?.focus()
   }
   return <section className="activity-card" aria-label="学习活动热图">
-    <div className="activity-heading"><h3>一点一点，敲出进步</h3><span>{loaded ? `过去一年 ${activity.total} 句次 · 练习 ${activity.activeDays} 天` : '正在读取学习活动…'}</span></div>
+    <div className="activity-heading"><h3>一点一点，敲出进步</h3><span>{loaded ? `过去一年练习 ${activity.activeDays} 天，共 ${activity.total} 句次` : '正在读取学习活动…'}</span></div>
     {error ? <p role="alert">学习活动暂时读取失败，请刷新重试。</p> : <>
       <div className="activity-scroll" ref={scroller}>
         <div className="activity-chart" style={{ '--weeks': columns } as React.CSSProperties}>
@@ -60,13 +60,13 @@ export function ActivityHeatmap() {
           <div className="activity-grid" role="group" aria-label="过去一年的每日练习，方向键切换日期">
             {Array.from({ length: activity.leading }, (_, index) => <span key={`blank-${index}`} aria-hidden="true" />)}
             {activity.days.map((day, index) => <button type="button" key={day.date} data-date={day.date} data-level={day.level}
-              className="activity-day" aria-label={`${day.date}，练习 ${day.count} 句次`} title={`${day.date} · ${day.count} 句次`}
+              className="activity-day" aria-label={`${day.date}，练习 ${day.count} 句次`} title={`${day.date}：${day.count} 句次`}
               aria-pressed={selectedDay.date === day.date} tabIndex={selectedDay.date === day.date ? 0 : -1}
               onClick={() => setSelected(day.date)} onKeyDown={(event) => navigate(event, index)} />)}
           </div>
         </div>
       </div>
-      <div className="activity-footer"><span role="status">{selectedDay.date} · {selectedDay.count ? `练习 ${selectedDay.count} 句次` : '还没有练习记录'}</span>
+      <div className="activity-footer"><span role="status">{selectedDay.date}：{selectedDay.count ? `练习 ${selectedDay.count} 句次` : '还没有练习记录'}</span>
         <span className="activity-legend" aria-label="颜色越深，练习越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
       <p className="backup-help">按本机日期统计，记忆复习、自由跟打和重复练习均计入。手机上可左右滑动查看。</p>
     </>}
