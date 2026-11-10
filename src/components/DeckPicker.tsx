@@ -21,10 +21,10 @@ export function DeckPicker({ language, onLanguage, lesson, error, onRetry, level
   const levels = lesson ? ['N5', 'N4', 'N3', 'N2', 'N1'].filter((value) => lesson.items.some((item) => item.level === value)) : []
   return (
     <div className="deck-panel">
-      <div className="mode-switch language-switch" role="group" aria-label="学习语言">
+      {LANGUAGE_ORDER.length > 1 && <div className="mode-switch language-switch" role="group" aria-label="学习语言">
         {LANGUAGE_ORDER.map((value) => <button key={value} type="button" disabled={disabled} aria-pressed={language === value}
           onClick={() => onLanguage(value)}>{LANGUAGES[value].name}</button>)}
-      </div>
+      </div>}
       {lesson ? <>
         <p className="deck-title">{lesson.title}</p>
         <div className="deck-summary">

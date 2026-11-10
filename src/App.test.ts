@@ -7,6 +7,8 @@ import App from './App'
 import { addHistoryEntry, exportProgress, PROGRESS_UPDATED_KEY } from './lib/storage'
 
 const deck = vi.hoisted(() => ({ ready: Promise.resolve() as Promise<void> }))
+// The site hides English for now (languages.ts); these tests keep the built English mode working.
+vi.mock('./languages', async (importOriginal) => ({ ...await importOriginal<typeof import('./languages')>(), LANGUAGE_ORDER: ['ja', 'en'] }))
 vi.mock('./lib/decks', () => ({ DECK_IDS: { ja: 'test-deck', en: 'test-english' }, loadDeck: async (language: 'ja' | 'en') => {
   await deck.ready
   if (language === 'en') return { schemaVersion: 2, id: 'test-english', title: '英文测试', nativeLanguage: 'zh-CN', targetLanguage: 'en',

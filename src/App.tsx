@@ -7,7 +7,7 @@ import { ReviewDock } from './components/ReviewDock'
 import { TargetSentence } from './components/TargetSentence'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
 import { LANGUAGE_KEY, preference, savePreference } from './lib/preferences'
-import { LANGUAGES } from './languages'
+import { LANGUAGE_ORDER, LANGUAGES } from './languages'
 import { CLOUD_APPLIED } from './lib/account-scope'
 import { formatDuration, sampleItems } from './lib/practice'
 import {
@@ -36,7 +36,10 @@ const SESSION_SIZE = 10
 const deckLevelKey = (id: string) => `typelingo.deck-level.v1:${id}`
 
 type Screen = 'home' | 'practice' | 'result'
-const readLanguage = (): TargetLanguage => preference(LANGUAGE_KEY, 'ja') === 'en' ? 'en' : 'ja'
+// What each sentence of the round got: a grade, a free-mode pass, or a skip.
+type RoundMark = Grade | 'done' | 'skip'
+// A language saved earlier but no longer offered (English, for now) falls back to Japanese.
+const readLanguage = (): TargetLanguage => LANGUAGE_ORDER.find((language) => language === preference(LANGUAGE_KEY, 'ja')) ?? 'ja'
 
 function App() {
   const { session, syncing, status, sync, setPracticing } = useAccount()
@@ -58,6 +61,7 @@ function App() {
   const [typed, setTyped] = useState('')
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [completedSentenceCount, setCompletedSentenceCount] = useState(0)
+  const [marks, setMarks] = useState<RoundMark[]>([])
   const [summary, setSummary] = useState<PracticeSummary | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [historyTotal, setHistoryTotal] = useState(0)
@@ -206,6 +210,7 @@ function App() {
       setCompletedAt(null)
       setStartedAt(Date.now())
       setCompletedSentenceCount(0)
+      setMarks([])
       setSummary(null)
       setShowFurigana(mode === 'free')
       hintUsedRef.current = mode === 'free' && lesson.targetLanguage === 'ja'
@@ -277,6 +282,11 @@ function App() {
       partial: currentIndex + 1 < queue.length }
   }
 
+  function markSentence(mark: RoundMark) {
+    const index = currentIndex
+    setMarks((current) => { const next = [...current]; next[index] = mark; return next })
+  }
+
   async function submitSentence(grade: Grade | null) {
     if (!currentItem || !lesson || completedAt === null || isComposingRef.current || savingRef.current) return
     savingRef.current = true; setSaving(true); setProgressError('')
@@ -288,6 +298,7 @@ function App() {
       await recordReview(review,
         currentItem, roundHistory(lesson, nextCount), currentProgress?.updatedAt)
       setCompletedSentenceCount(nextCount)
+      markSentence(grade ?? 'done')
       advanceFromCurrent(nextCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
     finally { savingRef.current = false; setSaving(false); inputRef.current?.focus() }
@@ -299,6 +310,7 @@ function App() {
     try {
       if (permanent) setPermanentlySkippedIds(await permanentlySkipSentence(permanentlySkippedIds, currentItem.id))
       if (currentIndex + 1 >= queue.length) await addHistoryEntry([], roundHistory(lesson, completedSentenceCount))
+      markSentence('skip')
       advanceFromCurrent(completedSentenceCount)
     } catch (error) { setProgressError(error instanceof Error ? error.message : '保存失败，请重试。') }
     finally { savingRef.current = false; setSaving(false) }
@@ -408,11 +420,7 @@ function App() {
               </span>
             </div>
 
-            <div className="progress-track" aria-hidden="true">
-              <span
-                style={{ width: `${((currentIndex + 1) / queue.length) * 100}%` }}
-              />
-            </div>
+            <RoundMarks count={queue.length} marks={marks} current={currentIndex} />
 
             <div className="typing-card">
               <div className="practice-line native-line">
@@ -508,6 +516,7 @@ function App() {
         {screen === 'result' && summary && (
           <ResultScreen
             summary={summary}
+            marks={<RoundMarks count={queue.length} marks={marks} />}
             syncStatus={session ? status : undefined}
             syncing={syncing}
             canRestart={canStart}
@@ -627,8 +636,22 @@ function HomeScreen({
   )
 }
 
+// One slot per sentence of the round; a rated sentence shows the mark a teacher would give it.
+function RoundMarks({ count, marks, current }: { count: number; marks: RoundMark[]; current?: number }) {
+  return (
+    <ol className="round-marks" aria-hidden="true" style={{ '--count': count } as React.CSSProperties}>
+      {Array.from({ length: count }, (_, index) => {
+        const mark = marks[index]
+        return <li key={index} data-state={index === current ? 'current' : mark ? 'done' : undefined}
+          data-mark={mark === undefined || mark === 'done' ? undefined : String(mark)} />
+      })}
+    </ol>
+  )
+}
+
 interface ResultScreenProps {
   summary: PracticeSummary
+  marks: React.ReactNode
   syncStatus?: string
   syncing: boolean
   canRestart: boolean
@@ -636,7 +659,7 @@ interface ResultScreenProps {
   onHome: () => void
 }
 
-function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
+function ResultScreen({ summary, marks, syncStatus, syncing, canRestart, onRestart, onHome }: ResultScreenProps) {
   return (
     <section className="result-screen" aria-labelledby="result-title">
       <h1 id="result-title">{Array.from('练习完成').map((char, index) => <span className="title-char" key={index}>{char}</span>)}</h1>
@@ -648,6 +671,7 @@ function ResultScreen({ summary, syncStatus, syncing, canRestart, onRestart, onH
             ? `完成 ${summary.sentenceCount} 个句子，继续保持这份节奏。`
             : '本轮已结束，你可以返回主页或再来一组。'}
       </p>
+      {marks}
 
       <div className="result-grid">
         <article>
