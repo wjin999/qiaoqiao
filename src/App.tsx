@@ -128,7 +128,11 @@ function App() {
     window.addEventListener('storage', changed)
     window.addEventListener('focus', focus)
     const timer = window.setInterval(() => setClockNow(Date.now()), 15000)
-    return () => { window.removeEventListener('storage', changed); window.removeEventListener('focus', focus); window.clearInterval(timer) }
+    return () => {
+      // Reads still in flight belong to a screen that is gone: their answers are dropped, not applied.
+      refreshVersionRef.current += 1
+      window.removeEventListener('storage', changed); window.removeEventListener('focus', focus); window.clearInterval(timer)
+    }
   }, [refreshProgress])
 
   useEffect(() => {
